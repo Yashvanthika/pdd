@@ -1,0 +1,6 @@
+{
+  "name": "BloodLink",
+  "description": "An intelligent emergency blood coordination platform connecting hospitals, patients, and donors in real-time.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
