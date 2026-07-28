@@ -12,6 +12,6 @@
     "src",
     "server.ts",
     "app.json",
-    "babel.config.js"
+    "babel.config.cjs"
   ]
 }
