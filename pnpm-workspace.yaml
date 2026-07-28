@@ -1,0 +1,4 @@
+allowBuilds:
+  '@google/genai@2.13.0': false
+  'esbuild@0.25.12 || 0.28.1': true
+  'protobufjs@7.6.5': false
