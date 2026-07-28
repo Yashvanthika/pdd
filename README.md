@@ -2,7 +2,7 @@
 
 BloodLink is a donor-focused mobile application for blood donor registration, secure sign-in, profile management, and location-based donor search.
 
-The frontend is an Expo React Native app for iOS and Android. The backend is a Node/Express API deployed on Dokploy and backed by Supabase Auth plus the `donor_profiles` table. Firebase Phone Auth verifies the mobile number before donor registration.
+The frontend is an Expo React Native app for iOS and Android. The backend is a Node/Express API deployed on Dokploy and backed by Supabase Auth plus the `donor_profiles` table.
 
 ## Supabase Setup
 
@@ -18,8 +18,6 @@ CORS_ORIGINS="http://localhost:8081,http://localhost:19006"
 SUPABASE_URL=""
 SUPABASE_PUBLISHABLE_KEY=""
 SUPABASE_SERVICE_ROLE_KEY=""
-FIREBASE_PROJECT_ID=""
-FIREBASE_SERVICE_ACCOUNT_JSON=""
 ```
 
 Mobile environment variables:
@@ -42,7 +40,7 @@ EXPO_PUBLIC_API_BASE_URL="http://localhost:3000"
    cp .env.example .env.local
    ```
 
-3. Add Supabase, Firebase project, and API values in `.env.local`.
+3. Add Supabase and API values in `.env.local`.
 
 4. Start the backend API:
    ```bash
@@ -53,8 +51,6 @@ EXPO_PUBLIC_API_BASE_URL="http://localhost:3000"
    ```bash
    pnpm run dev
    ```
-
-Firebase Phone Auth requires Expo development builds for iOS and Android. Expo Go cannot run the native Firebase Auth module.
 
 ## Production Build
 
@@ -89,8 +85,6 @@ CORS_ORIGINS=https://your-mobile-api-client.example
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-FIREBASE_PROJECT_ID=your_firebase_project_id
-FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 ```
 
 Configure the mobile app with:
@@ -100,11 +94,6 @@ EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
 EXPO_PUBLIC_API_BASE_URL=https://your-dokploy-domain.example
 ```
-
-Add Firebase native app config files before creating development builds:
-
-- `google-services.json`
-- `GoogleService-Info.plist`
 
 ## API Surface
 

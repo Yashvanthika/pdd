@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { getAuth, signInWithPhoneNumber, signOut as firebaseSignOut } from '@react-native-firebase/auth';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CheckboxRow, Header, LinkButton, Message, PrimaryButton, Screen, SelectField, TextField } from './components';
 import { useAuth } from './AuthContext';
@@ -12,7 +11,6 @@ import type { DonorProfile, DonorSearchResult } from './types';
 import { getCities, getDistricts, getStates } from '../data/indiaLocations';
 
 type LoginProps = NativeStackScreenProps<AuthStackParamList, 'Login'>;
-type RegisterPhoneProps = NativeStackScreenProps<AuthStackParamList, 'RegisterPhone'>;
 type RegisterProfileProps = NativeStackScreenProps<AuthStackParamList, 'RegisterProfile'>;
 type ForgotPasswordProps = NativeStackScreenProps<AuthStackParamList, 'ForgotPassword'>;
 type SearchProps = NativeStackScreenProps<AppStackParamList, 'Search'>;
@@ -61,73 +59,19 @@ export function LoginScreen({ navigation }: LoginProps) {
       <TextField label="Password" value={password} onChangeText={setPassword} secureTextEntry placeholder="Password" />
       <PrimaryButton title={submitting ? 'Signing In' : 'Sign In'} onPress={handleLogin} disabled={submitting || !email || !password} />
       <View style={{ marginTop: 10 }}>
-        <LinkButton title="Create donor account" onPress={() => navigation.navigate('RegisterPhone')} />
+        <LinkButton title="Create donor account" onPress={() => navigation.navigate('RegisterProfile')} />
         <LinkButton title="Forgot password" onPress={() => navigation.navigate('ForgotPassword')} />
       </View>
     </Screen>
   );
 }
 
-export function RegisterPhoneScreen({ navigation }: RegisterPhoneProps) {
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
-  const [confirm, setConfirm] = useState<any>(null);
-  const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  async function sendCode() {
-    setError('');
-    setSubmitting(true);
-    try {
-      const confirmation = await signInWithPhoneNumber(getAuth(), normalizePhone(phone));
-      setConfirm(confirmation);
-    } catch (err: any) {
-      setError(err.message || 'Unable to send OTP.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function verifyCode() {
-    setError('');
-    setSubmitting(true);
-    try {
-      const credential = await confirm.confirm(code);
-      const firebaseIdToken = await credential.user.getIdToken();
-      navigation.navigate('RegisterProfile', {
-        phone: normalizePhone(phone),
-        firebaseIdToken,
-      });
-    } catch (err: any) {
-      setError(err.message || 'Invalid OTP.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Screen>
-      <Header title="Verify Mobile" subtitle="Enter your Indian mobile number to begin donor registration." back={() => navigation.goBack()} />
-      {error ? <Message text={error} tone="error" /> : null}
-      <TextField label="Country" value="INDIA" onChangeText={() => undefined} editable={false} />
-      <TextField label="Mobile Number" value={phone} onChangeText={setPhone} placeholder="10 digit mobile number" keyboardType="phone-pad" />
-      {confirm ? (
-        <>
-          <TextField label="OTP Code" value={code} onChangeText={setCode} placeholder="Enter OTP" keyboardType="number-pad" />
-          <PrimaryButton title={submitting ? 'Verifying' : 'Verify OTP'} onPress={verifyCode} disabled={submitting || code.length < 4} />
-        </>
-      ) : (
-        <PrimaryButton title={submitting ? 'Sending OTP' : 'Send OTP'} onPress={sendCode} disabled={submitting || phone.replace(/\D/g, '').length < 10} />
-      )}
-    </Screen>
-  );
-}
-
-export function RegisterProfileScreen({ navigation, route }: RegisterProfileProps) {
+export function RegisterProfileScreen({ navigation }: RegisterProfileProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
   const [bloodGroup, setBloodGroup] = useState<BloodGroup>('A+');
   const [yearOfBirth, setYearOfBirth] = useState('');
   const [state, setState] = useState('');
@@ -150,20 +94,19 @@ export function RegisterProfileScreen({ navigation, route }: RegisterProfileProp
       return;
     }
 
+    if (phone.replace(/\D/g, '').length < 10) {
+      setError('Enter a valid 10 digit mobile number.');
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const firebaseIdToken = route.params.firebaseIdToken || await getAuth().currentUser?.getIdToken();
-      if (!firebaseIdToken || !route.params.phone) {
-        throw new Error('Mobile verification was not completed.');
-      }
-
       await apiPublicFetch<{ profile: DonorProfile }>('/api/auth/register-donor', {
         method: 'POST',
         body: JSON.stringify({
-          firebaseIdToken,
           email,
           password,
-          phone: route.params.phone,
+          phone: normalizePhone(phone),
           fullName,
           bloodGroup,
           yearOfBirth: Number(yearOfBirth),
@@ -175,7 +118,6 @@ export function RegisterProfileScreen({ navigation, route }: RegisterProfileProp
         }),
       });
 
-      await firebaseSignOut(getAuth()).catch(() => undefined);
       Alert.alert('Registration complete', 'Your donor account is ready. Please sign in.');
       navigation.popToTop();
     } catch (err: any) {
@@ -192,7 +134,7 @@ export function RegisterProfileScreen({ navigation, route }: RegisterProfileProp
       <TextField label="Full Name" value={fullName} onChangeText={setFullName} placeholder="Donor name" />
       <SelectField label="Blood Group" value={bloodGroup} options={[...BLOOD_GROUPS]} onSelect={(value) => setBloodGroup(value as BloodGroup)} />
       <SelectField label="Year of Birth" value={yearOfBirth} options={years} onSelect={setYearOfBirth} />
-      <TextField label="Mobile Number" value={route.params.phone} onChangeText={() => undefined} editable={false} />
+      <TextField label="Mobile Number" value={phone} onChangeText={setPhone} placeholder="10 digit mobile number" keyboardType="phone-pad" />
       <TextField label="Email" value={email} onChangeText={setEmail} placeholder="name@example.com" keyboardType="email-address" />
       <TextField label="Password" value={password} onChangeText={setPassword} secureTextEntry placeholder="Minimum 8 characters" />
       <TextField label="Retype Password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry placeholder="Retype password" />
@@ -205,7 +147,7 @@ export function RegisterProfileScreen({ navigation, route }: RegisterProfileProp
       <PrimaryButton
         title={submitting ? 'Registering' : 'Register'}
         onPress={submit}
-        disabled={submitting || !email || !password || !fullName || !yearOfBirth || !state || !district || !city || !available || !consent}
+        disabled={submitting || !email || !password || !phone || !fullName || !yearOfBirth || !state || !district || !city || !available || !consent}
       />
     </Screen>
   );

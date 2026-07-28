@@ -7,28 +7,11 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
-      "bundleIdentifier": "com.bloodlink.app",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "bundleIdentifier": "com.bloodlink.app"
     },
     "android": {
-      "package": "com.bloodlink.app",
-      "googleServicesFile": "./google-services.json"
+      "package": "com.bloodlink.app"
     },
-    "plugins": [
-      "@react-native-firebase/app",
-      "@react-native-firebase/auth",
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            "useFrameworks": "static",
-            "forceStaticLinking": [
-              "RNFBApp",
-              "RNFBAuth"
-            ]
-          }
-        }
-      ]
-    ]
+    "plugins": []
   }
 }

@@ -12,7 +12,6 @@ import {
   LastDonationScreen,
   LoginScreen,
   MyPageScreen,
-  RegisterPhoneScreen,
   RegisterProfileScreen,
   ResultsScreen,
   SearchScreen,
@@ -27,7 +26,6 @@ function AuthNavigator() {
   return (
     <AuthStack.Navigator screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="Login" component={LoginScreen} />
-      <AuthStack.Screen name="RegisterPhone" component={RegisterPhoneScreen} />
       <AuthStack.Screen name="RegisterProfile" component={RegisterProfileScreen} />
       <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </AuthStack.Navigator>

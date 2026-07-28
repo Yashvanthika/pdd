@@ -1,6 +1,5 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import { createVerify } from 'crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { BLOOD_GROUPS, type BloodGroup } from './src/mobile/bloodGroups';
 import { getCities, getDistricts, isValidLocation } from './src/data/indiaLocations';
@@ -18,8 +17,6 @@ const supabaseUrl = (process.env.SUPABASE_URL || '').trim();
 const supabasePublicKey = (process.env.SUPABASE_PUBLISHABLE_KEY || '').trim();
 const supabaseServiceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublicKey && supabaseServiceRoleKey);
-const FIREBASE_CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
-let firebaseCertCache: { expiresAt: number; certs: Record<string, string> } | null = null;
 
 function getAllowedCorsOrigin(origin: string | undefined): string | null {
   if (!origin || CORS_ORIGINS.length === 0) return null;
@@ -59,115 +56,6 @@ function getSupabaseAdmin(): SupabaseClient {
       autoRefreshToken: false,
     },
   });
-}
-
-function isFirebaseConfigured(): boolean {
-  return Boolean(getFirebaseProjectId());
-}
-
-function getFirebaseProjectId(): string {
-  const explicitProjectId = process.env.FIREBASE_PROJECT_ID?.trim();
-  if (explicitProjectId) return explicitProjectId;
-
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
-  if (!serviceAccountJson) return '';
-
-  try {
-    const parsed = JSON.parse(serviceAccountJson);
-    return typeof parsed.project_id === 'string' ? parsed.project_id.trim() : '';
-  } catch {
-    return '';
-  }
-}
-
-function decodeBase64Url(value: string): Buffer {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
-  return Buffer.from(padded, 'base64');
-}
-
-function decodeTokenPart<T>(value: string): T {
-  return JSON.parse(decodeBase64Url(value).toString('utf8')) as T;
-}
-
-function getMaxAge(header: string | null): number {
-  const match = header?.match(/max-age=(\d+)/);
-  return match ? Number(match[1]) : 3600;
-}
-
-async function getFirebaseCert(kid: string): Promise<string> {
-  const now = Date.now();
-  if (firebaseCertCache && firebaseCertCache.expiresAt > now && firebaseCertCache.certs[kid]) {
-    return firebaseCertCache.certs[kid];
-  }
-
-  const response = await fetch(FIREBASE_CERTS_URL);
-  if (!response.ok) {
-    throw new Error('Unable to fetch Firebase verification certificates.');
-  }
-
-  const certs = await response.json() as Record<string, string>;
-  const maxAge = getMaxAge(response.headers.get('cache-control'));
-  firebaseCertCache = {
-    certs,
-    expiresAt: now + Math.max(maxAge - 60, 300) * 1000,
-  };
-
-  const cert = certs[kid];
-  if (!cert) {
-    throw new Error('Firebase verification certificate was not found.');
-  }
-
-  return cert;
-}
-
-async function verifyFirebaseIdToken(idToken: string) {
-  const projectId = getFirebaseProjectId();
-  if (!projectId) {
-    throw new Error('Firebase project id is not configured.');
-  }
-
-  const [encodedHeader, encodedPayload, encodedSignature] = idToken.split('.');
-  if (!encodedHeader || !encodedPayload || !encodedSignature) {
-    throw new Error('Firebase phone verification token is invalid.');
-  }
-
-  const header = decodeTokenPart<{ alg?: string; kid?: string }>(encodedHeader);
-  if (header.alg !== 'RS256' || !header.kid) {
-    throw new Error('Firebase phone verification token is invalid.');
-  }
-
-  const cert = await getFirebaseCert(header.kid);
-  const verifier = createVerify('RSA-SHA256');
-  verifier.update(`${encodedHeader}.${encodedPayload}`);
-  verifier.end();
-
-  if (!verifier.verify(cert, decodeBase64Url(encodedSignature))) {
-    throw new Error('Firebase phone verification token could not be verified.');
-  }
-
-  const payload = decodeTokenPart<{
-    aud?: string;
-    exp?: number;
-    iat?: number;
-    iss?: string;
-    phone_number?: string;
-    sub?: string;
-  }>(encodedPayload);
-
-  const now = Math.floor(Date.now() / 1000);
-  if (payload.aud !== projectId || payload.iss !== `https://securetoken.google.com/${projectId}`) {
-    throw new Error('Firebase phone verification token belongs to another project.');
-  }
-
-  if (!payload.sub || !payload.exp || payload.exp <= now || !payload.iat || payload.iat > now + 300) {
-    throw new Error('Firebase phone verification token has expired.');
-  }
-
-  if (!payload.phone_number) {
-    throw new Error('Firebase phone verification token does not contain a phone number.');
-  }
-
-  return payload;
 }
 
 function normalizeIndianPhone(phone: string): string {
@@ -260,7 +148,6 @@ app.get('/api/health', (_req, res) => {
     service: 'bloodlink-donor-directory',
     environment: process.env.NODE_ENV || 'development',
     supabaseConfigured: isSupabaseConfigured,
-    firebaseConfigured: isFirebaseConfigured(),
     time: new Date().toISOString(),
   });
 });
@@ -276,12 +163,6 @@ app.post('/api/auth/register-donor', async (req, res) => {
       return;
     }
 
-    if (!isFirebaseConfigured()) {
-      res.status(503).json({ error: 'Firebase phone verification is not configured.' });
-      return;
-    }
-
-    const firebaseIdToken = asString(req.body.firebaseIdToken);
     const email = asString(req.body.email).toLowerCase();
     const password = asString(req.body.password);
     const phone = normalizeIndianPhone(asString(req.body.phone));
@@ -294,11 +175,6 @@ app.post('/api/auth/register-donor', async (req, res) => {
     const city = asString(req.body.city);
     const availableInEmergency = asBoolean(req.body.availableInEmergency);
     const displayConsent = asBoolean(req.body.displayConsent);
-
-    if (!firebaseIdToken) {
-      res.status(400).json({ error: 'Phone verification token is required.' });
-      return;
-    }
 
     if (!email || password.length < 8 || !fullName || !phone || !isBloodGroup(bloodGroup) || !yearOfBirth) {
       res.status(400).json({ error: 'Complete all required donor registration fields.' });
@@ -315,23 +191,14 @@ app.post('/api/auth/register-donor', async (req, res) => {
       return;
     }
 
-    const decodedToken = await verifyFirebaseIdToken(firebaseIdToken);
-    const verifiedPhone = normalizeIndianPhone(decodedToken.phone_number || '');
-    if (!verifiedPhone || verifiedPhone !== phone) {
-      res.status(400).json({ error: 'Verified phone number does not match the registration form.' });
-      return;
-    }
-
     const supabase = getSupabaseAdmin();
     const { data: createdUser, error: createError } = await supabase.auth.admin.createUser({
       email,
       password,
-      phone,
       email_confirm: true,
-      phone_confirm: true,
       user_metadata: {
         full_name: fullName,
-        donor_phone_verified: true,
+        donor_phone: phone,
       },
     });
 
@@ -423,8 +290,10 @@ app.put('/api/me', requireDonor, async (req: AuthenticatedRequest, res) => {
     const supabase = getSupabaseAdmin();
     const { error: authUpdateError } = await supabase.auth.admin.updateUserById(req.donorId as string, {
       email: updatePayload.email,
-      phone: updatePayload.phone,
-      user_metadata: { full_name: updatePayload.full_name },
+      user_metadata: {
+        donor_phone: updatePayload.phone,
+        full_name: updatePayload.full_name,
+      },
     });
 
     if (authUpdateError) {

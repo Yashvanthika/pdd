@@ -1,11 +1,7 @@
 export type AuthStackParamList = {
   Login: undefined;
   ForgotPassword: undefined;
-  RegisterPhone: undefined;
-  RegisterProfile: {
-    phone: string;
-    firebaseIdToken: string;
-  };
+  RegisterProfile: undefined;
 };
 
 export type AppStackParamList = {

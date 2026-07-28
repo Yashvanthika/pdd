@@ -39,7 +39,6 @@ export interface DonorSearchResult {
 }
 
 export interface RegisterDonorInput {
-  firebaseIdToken: string;
   email: string;
   password: string;
   phone: string;
