@@ -14,15 +14,15 @@ import {
 interface DonorPortalProps {
   currentUser: User;
   activeRequest: BloodRequest | null;
-  onSimulateResponse: (donorId: string, response: 'ACCEPTED' | 'REJECTED') => void;
-  onUpdateDonorProfile: (updatedDonor: User) => void;
-  onAddLog: (type: 'ACCEPT' | 'REJECT' | 'INFO', message: string) => void;
+  onRespondToRequest: (donorId: string, response: 'ACCEPTED' | 'REJECTED') => Promise<void>;
+  onUpdateDonorProfile: (updatedDonor: User) => Promise<void>;
+  onAddLog: (type: 'ACCEPT' | 'REJECT' | 'INFO', message: string) => Promise<void>;
 }
 
 export const DonorPortal: React.FC<DonorPortalProps> = ({
   currentUser,
   activeRequest,
-  onSimulateResponse,
+  onRespondToRequest,
   onUpdateDonorProfile,
   onAddLog
 }) => {
@@ -69,13 +69,13 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
 
   const myResponse = activeRequest ? activeRequest.donorResponses[currentUser.id] : undefined;
 
-  const triggerAvailableToggle = () => {
+  const triggerAvailableToggle = async () => {
     const updated = { ...currentUser, isAvailable: !currentUser.isAvailable };
-    onUpdateDonorProfile(updated);
-    onAddLog('INFO', `Donor ${currentUser.name} updated availability: ${updated.isAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}`);
+    await onUpdateDonorProfile(updated);
+    await onAddLog('INFO', `Donor ${currentUser.name} updated availability: ${updated.isAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}`);
   };
 
-  const handleProfileSave = (e: React.FormEvent) => {
+  const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const updated = {
       ...currentUser,
@@ -87,30 +87,30 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
       gender,
       lastDonationDate: lastDonation
     };
-    onUpdateDonorProfile(updated);
+    await onUpdateDonorProfile(updated);
     setIsEditProfile(false);
-    onAddLog('INFO', `Volunteer ${currentUser.name} updated profile details.`);
+    await onAddLog('INFO', `Volunteer ${currentUser.name} updated profile details.`);
   };
 
-  const handleLocationChange = (lat: number, lng: number) => {
+  const handleLocationChange = async (lat: number, lng: number) => {
     const updated = {
       ...currentUser,
       location: { lat, lng }
     };
-    onUpdateDonorProfile(updated);
-    onAddLog('INFO', `Volunteer ${currentUser.name} updated service location to: Lat ${lat}, Lng ${lng}`);
+    await onUpdateDonorProfile(updated);
+    await onAddLog('INFO', `Volunteer ${currentUser.name} updated service location to: Lat ${lat}, Lng ${lng}`);
   };
 
-  const handleAccept = () => {
+  const handleAccept = async () => {
     if (!activeRequest) return;
-    onSimulateResponse(currentUser.id, 'ACCEPTED');
-    onAddLog('ACCEPT', `DONOR ACCEPTED: Volunteer ${currentUser.name} accepted request for patient ${activeRequest.patientName}.`);
+    await onRespondToRequest(currentUser.id, 'ACCEPTED');
+    await onAddLog('ACCEPT', `DONOR ACCEPTED: Volunteer ${currentUser.name} accepted request for patient ${activeRequest.patientName}.`);
   };
 
-  const handleDecline = () => {
+  const handleDecline = async () => {
     if (!activeRequest) return;
-    onSimulateResponse(currentUser.id, 'REJECTED');
-    onAddLog('REJECT', `DISPATCH DECLINED: Volunteer ${currentUser.name} declined request from ${activeRequest.hospitalName}.`);
+    await onRespondToRequest(currentUser.id, 'REJECTED');
+    await onAddLog('REJECT', `DISPATCH DECLINED: Volunteer ${currentUser.name} declined request from ${activeRequest.hospitalName}.`);
   };
 
   return (

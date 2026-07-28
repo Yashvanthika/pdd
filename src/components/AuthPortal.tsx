@@ -4,29 +4,34 @@
  */
 
 import React, { useState } from 'react';
-import { User, BloodGroup, Location } from '../types';
-import { Droplet, Mail, Lock, Phone, UserRound, MapPin, Building, ShieldAlert, Navigation } from 'lucide-react';
+import { BloodGroup, Location } from '../types';
+import type { RegistrationInput } from '../services/bloodlinkRepository';
+import { Droplet, Mail, Lock, Building, Navigation } from 'lucide-react';
+
+type RegistrationRole = Exclude<RegistrationInput['role'], 'admin'>;
 
 interface AuthPortalProps {
-  onLogin: (user: User) => void;
-  users: User[];
-  onRegister: (newUser: User) => void;
+  onLogin: (email: string, password: string) => Promise<void>;
+  onRegister: (newUser: RegistrationInput) => Promise<void>;
 }
 
-export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegister }) => {
+export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, onRegister }) => {
   const [isRegister, setIsRegister] = useState(false);
-  const [role, setRole] = useState<'donor' | 'hospital' | 'admin'>('donor');
+  const [role, setRole] = useState<RegistrationRole>('donor');
   
   // Login Form States
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
 
   // Register Form States
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regPhone, setRegPhone] = useState('');
+  const [regError, setRegError] = useState('');
+  const [isRegisterSubmitting, setIsRegisterSubmitting] = useState(false);
   
   // Donor-specific
   const [donorBloodGroup, setDonorBloodGroup] = useState<BloodGroup>('O-');
@@ -40,62 +45,53 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
 
   const [registerSuccess, setRegisterSuccess] = useState(false);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
+    setIsLoginSubmitting(true);
 
-    const matched = users.find(
-      u => u.email.toLowerCase() === loginEmail.trim().toLowerCase() && 
-      u.password === loginPassword
-    );
-
-    if (matched) {
-      if (matched.status === 'BANNED') {
-        setLoginError('This account has been suspended by the administrator.');
-        return;
-      }
-      onLogin(matched);
-    } else {
-      setLoginError('Invalid email or password.');
+    try {
+      await onLogin(loginEmail.trim().toLowerCase(), loginPassword);
+    } catch (error: any) {
+      setLoginError(error.message || 'Invalid email or password.');
+    } finally {
+      setIsLoginSubmitting(false);
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Check if email already exists
-    if (users.some(u => u.email.toLowerCase() === regEmail.trim().toLowerCase())) {
-      alert('Email address already registered.');
-      return;
-    }
+    setRegError('');
+    setIsRegisterSubmitting(true);
 
-    const newUser: User = {
-      id: `${role}-${Date.now()}`,
+    const newUser: RegistrationInput = {
       email: regEmail.trim().toLowerCase(),
       password: regPassword,
       role,
       name: regName.trim(),
       phone: regPhone.trim(),
-      status: role === 'donor' ? 'PENDING' : 'APPROVED', // Donors require Admin Approval
-      createdAt: new Date().toISOString(),
       location: selectedLoc,
       address: role === 'hospital' ? address : undefined,
       bloodGroup: role === 'donor' ? donorBloodGroup : undefined,
       age: role === 'donor' ? donorAge : undefined,
       gender: role === 'donor' ? donorGender : undefined,
-      lastDonationDate: role === 'donor' ? donorLastDonation : undefined,
-      isAvailable: role === 'donor' ? true : undefined,
-      donationHistory: role === 'donor' ? [] : undefined
+      lastDonationDate: role === 'donor' ? donorLastDonation : undefined
     };
 
-    onRegister(newUser);
-    setRegisterSuccess(true);
-    setTimeout(() => {
-      setRegisterSuccess(false);
-      setIsRegister(false);
-      setLoginEmail(newUser.email);
-      setLoginPassword(newUser.password || '');
-    }, 2000);
+    try {
+      await onRegister(newUser);
+      setRegisterSuccess(true);
+      setTimeout(() => {
+        setRegisterSuccess(false);
+        setIsRegister(false);
+        setLoginEmail(newUser.email);
+        setLoginPassword('');
+      }, 2000);
+    } catch (error: any) {
+      setRegError(error.message || 'Registration could not be completed.');
+    } finally {
+      setIsRegisterSubmitting(false);
+    }
   };
 
   const handleMapClick = (e: React.MouseEvent<SVGSVGElement, MouseEvent>) => {
@@ -140,7 +136,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
           {!registerSuccess && (
             <div className="flex border-b border-slate-800 mb-6 pb-0.5 select-none">
               <button
-                onClick={() => { setIsRegister(false); setLoginError(''); }}
+                onClick={() => { setIsRegister(false); setLoginError(''); setRegError(''); }}
                 className={`flex-1 pb-3 text-sm font-bold text-center border-b-2 transition-all cursor-pointer ${
                   !isRegister
                     ? 'border-rose-500 text-white'
@@ -150,7 +146,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
                 Sign In
               </button>
               <button
-                onClick={() => setIsRegister(true)}
+                onClick={() => { setIsRegister(true); setLoginError(''); setRegError(''); }}
                 className={`flex-1 pb-3 text-sm font-bold text-center border-b-2 transition-all cursor-pointer ${
                   isRegister
                     ? 'border-rose-500 text-white'
@@ -207,9 +203,10 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
 
               <button
                 type="submit"
+                disabled={isLoginSubmitting}
                 className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-3 px-4 rounded-xl shadow-lg shadow-rose-950/20 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
-                Sign In to Dashboard
+                {isLoginSubmitting ? 'Signing in...' : 'Sign In to Dashboard'}
               </button>
             </form>
           )}
@@ -217,11 +214,16 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
           {/* REGISTER VIEW */}
           {isRegister && !registerSuccess && (
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
+              {regError && (
+                <div className="bg-rose-950/50 border border-rose-500/50 text-rose-400 p-3 rounded-lg text-xs font-semibold">
+                  {regError}
+                </div>
+              )}
               
               {/* Role Switcher */}
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block mb-2 text-center">Select Account Type</label>
-                <div className="grid grid-cols-3 gap-2 p-1 bg-slate-900 border border-slate-800 rounded-xl">
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900 border border-slate-800 rounded-xl">
                   <button
                     type="button"
                     onClick={() => setRole('donor')}
@@ -245,18 +247,6 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
                   >
                     <Building className="w-4 h-4 mb-0.5" />
                     <span>Hospital / Center</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRole('admin')}
-                    className={`flex flex-col items-center justify-center py-2 px-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                      role === 'admin'
-                        ? 'bg-rose-600 text-white shadow'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <ShieldAlert className="w-4 h-4 mb-0.5" />
-                    <span>Administrator</span>
                   </button>
                 </div>
               </div>
@@ -437,23 +427,12 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
                 </div>
               )}
 
-              {/* Admin passcode checking */}
-              {role === 'admin' && (
-                <div className="border-t border-slate-900 pt-3 mt-3">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Admin Security Passcode</label>
-                  <input
-                    type="password"
-                    placeholder="Enter security key to register"
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none"
-                  />
-                </div>
-              )}
-
               <button
                 type="submit"
+                disabled={isRegisterSubmitting}
                 className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-3 px-4 rounded-xl shadow-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
-                Submit Registration
+                {isRegisterSubmitting ? 'Submitting registration...' : 'Submit Registration'}
               </button>
             </form>
           )}

@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { BloodGroup, UrgencyLevel, BloodRequest, User, Location, SimulationLog } from '../types';
 import { calculateDistance, evaluateEligibility } from '../utils/compatibility';
 import { COMMON_CONDITIONS } from '../utils/referenceData';
-import { apiUrl } from '../utils/api';
+import { apiUrl, authorizedJsonHeaders } from '../utils/api';
 import { 
   ShieldAlert, Radio, Sparkles, Users, 
   Check, Clock, RotateCcw, Phone, 
@@ -19,16 +19,15 @@ interface HospitalDashboardProps {
   donors: User[]; // All donors
   activeRequest: BloodRequest | null;
   requests: BloodRequest[]; // Active and past requests
-  onBroadcastRequest: (request: BloodRequest) => void;
-  onCancelRequest: () => void;
+  onBroadcastRequest: (request: BloodRequest) => Promise<void>;
+  onCancelRequest: () => Promise<void>;
   selectedLocation: Location;
   onSelectLocation: (loc: Location) => void;
   radiusKm: number;
   onSetRadiusKm: (radius: number) => void;
   logs: SimulationLog[];
-  onAddLog: (type: SimulationLog['type'], message: string) => void;
-  onSimulateResponse: (donorId: string, response: 'ACCEPTED' | 'REJECTED') => void;
-  onCompleteDonation: (requestId: string, donorId: string) => void;
+  onAddLog: (type: SimulationLog['type'], message: string) => Promise<void>;
+  onCompleteDonation: (requestId: string, donorId: string) => Promise<void>;
 }
 
 export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
@@ -44,7 +43,6 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
   onSetRadiusKm,
   logs,
   onAddLog,
-  onSimulateResponse,
   onCompleteDonation
 }) => {
   // Request builder states
@@ -59,6 +57,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
   const [draftedSms, setDraftedSms] = useState('');
   const [broadcasting, setBroadcasting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [dispatchError, setDispatchError] = useState('');
 
   const hospitalName = currentUser.name;
 
@@ -82,11 +81,9 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
     setDraftedSms('');
     
     try {
-      const response = await fetch(apiUrl('/api/gemini/alert'), {
+      const response = await fetch(apiUrl('/api/outreach/alert'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await authorizedJsonHeaders(),
         body: JSON.stringify({
           hospitalName,
           patientName,
@@ -100,7 +97,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
       const data = await response.json();
       if (response.ok) {
         setDraftedSms(data.alertMessage);
-        onAddLog('INFO', `AI outreach service drafted emergency alert: "${data.alertMessage.substring(0, 45)}..."`);
+        await onAddLog('INFO', `AI outreach service drafted emergency alert: "${data.alertMessage.substring(0, 45)}..."`);
       } else {
         throw new Error(data.error || 'Server error.');
       }
@@ -108,15 +105,16 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
       console.error('AI outreach service unavailable, using local template', err);
       const fallback = `Emergency blood request: ${hospitalName} needs type ${bloodGroup} blood for patient ${patientName}. Units required: ${unitsRequired}. Open BloodLink to respond.`;
       setDraftedSms(fallback);
-      onAddLog('INFO', 'Prepared local medical outreach template because the AI service was unavailable.');
+      await onAddLog('INFO', 'Prepared local medical outreach template because the AI service was unavailable.');
     } finally {
       setIsDraftingAI(false);
     }
   };
 
-  const executeBroadcast = () => {
+  const executeBroadcast = async () => {
     if (broadcasting) return;
     setBroadcasting(true);
+    setDispatchError('');
 
     const baseSms = draftedSms || `Critical blood request: ${hospitalName} requires ${unitsRequired} units of type ${bloodGroup} blood for patient ${patientName}. Coverage radius is ${radiusKm}km.`;
 
@@ -140,20 +138,14 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
       donorResponses
     };
 
-    onBroadcastRequest(newRequest);
-    onAddLog('ALERT', `DISPATCH SENT: Notified ${eligibleDonors.length} compatible approved volunteers within ${radiusKm}km.`);
-
-    // Queue response status updates for locally managed donor records.
-    eligibleDonors.forEach((donor, i) => {
-      const isAccept = Math.random() < 0.75;
-      const delay = 2000 + (i * 2500) + (Math.random() * 1000);
-
-      setTimeout(() => {
-        onSimulateResponse(donor.id, isAccept ? 'ACCEPTED' : 'REJECTED');
-      }, delay);
-    });
-
-    setBroadcasting(false);
+    try {
+      await onBroadcastRequest(newRequest);
+      await onAddLog('ALERT', `DISPATCH SENT: Notified ${eligibleDonors.length} compatible approved volunteers within ${radiusKm}km.`);
+    } catch (error: any) {
+      setDispatchError(error.message || 'Unable to send emergency dispatch.');
+    } finally {
+      setBroadcasting(false);
+    }
   };
 
   // Historic requests list
@@ -501,6 +493,12 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
               </span>
             </div>
 
+            {dispatchError && (
+              <div className="bg-rose-50 border border-rose-100 text-rose-700 text-[10px] font-semibold rounded-xl p-3">
+                {dispatchError}
+              </div>
+            )}
+
             {/* AI SMS alert generation call */}
             <div className="space-y-2 border-t border-slate-100 pt-3">
               <button
@@ -527,15 +525,15 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
           {/* Trigger Dispatch */}
           <button
             onClick={executeBroadcast}
-            disabled={eligibleDonors.length === 0}
+            disabled={eligibleDonors.length === 0 || broadcasting}
             className={`w-full text-white font-bold text-xs py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-all ${
-              eligibleDonors.length === 0 
+              eligibleDonors.length === 0 || broadcasting
                 ? 'bg-slate-200 text-slate-400 pointer-events-none' 
                 : 'bg-rose-600 hover:bg-rose-700 text-white'
             }`}
           >
             <Radio className="w-4.5 h-4.5 animate-pulse" />
-            Send Emergency Dispatch
+            {broadcasting ? 'Sending Dispatch...' : 'Send Emergency Dispatch'}
           </button>
         </div>
       )}

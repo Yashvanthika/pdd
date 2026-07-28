@@ -8,22 +8,139 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 dotenv.config({ path: ['.env.local', '.env'] });
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
-app.use(express.json());
+const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
+const supabasePublicKey = (
+  process.env.SUPABASE_PUBLISHABLE_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  ''
+).trim();
+const isSupabaseServerConfigured = Boolean(supabaseUrl && supabasePublicKey);
+const isAiConfigured = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY');
+
+function getAllowedCorsOrigin(origin: string | undefined): string | null {
+  if (!origin || CORS_ORIGINS.length === 0) {
+    return null;
+  }
+
+  if (CORS_ORIGINS.includes('*')) {
+    return '*';
+  }
+
+  return CORS_ORIGINS.includes(origin) ? origin : null;
+}
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigin = getAllowedCorsOrigin(origin);
+
+  if (allowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    res.setHeader('Vary', 'Origin');
+  }
+
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(origin && !allowedOrigin ? 403 : 204);
+    return;
+  }
+
+  next();
+});
+
+app.use(express.json({ limit: '64kb' }));
+
+function getSupabaseAuthClient(token: string): SupabaseClient {
+  return createClient(supabaseUrl, supabasePublicKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  });
+}
+
+function getBearerToken(req: express.Request): string | null {
+  const header = req.headers.authorization || '';
+  const [scheme, token] = header.split(' ');
+
+  if (scheme?.toLowerCase() !== 'bearer' || !token) {
+    return null;
+  }
+
+  return token.trim();
+}
+
+async function requireDispatcherSession(
+  req: express.Request,
+  res: express.Response
+): Promise<{ userId: string; role: string } | null> {
+  if (!isSupabaseServerConfigured) {
+    res.status(503).json({ error: 'Supabase authentication is not configured on this server.' });
+    return null;
+  }
+
+  const token = getBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: 'Sign in again to use the outreach service.' });
+    return null;
+  }
+
+  const client = getSupabaseAuthClient(token);
+  const { data: authData, error: authError } = await client.auth.getUser(token);
+  if (authError || !authData.user) {
+    res.status(401).json({ error: 'Your session could not be verified.' });
+    return null;
+  }
+
+  const { data: profile, error: profileError } = await client
+    .from('profiles')
+    .select('role,status')
+    .eq('id', authData.user.id)
+    .single();
+
+  if (profileError || !profile) {
+    res.status(403).json({ error: 'Your BloodLink profile could not be verified.' });
+    return null;
+  }
+
+  if (!['hospital', 'admin'].includes(profile.role) || profile.status !== 'APPROVED') {
+    res.status(403).json({ error: 'Only approved hospital or administrator accounts can draft outreach alerts.' });
+    return null;
+  }
+
+  return {
+    userId: authData.user.id,
+    role: profile.role,
+  };
+}
 
 // Lazy-loaded GenAI Client to prevent crashes during startup if API key is not yet set
 let aiClient: GoogleGenAI | null = null;
 function getGenAIClient() {
   if (!aiClient) {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key || key === 'MY_GEMINI_API_KEY') {
+    if (!isAiConfigured) {
       return null;
     }
+
+    const key = process.env.GEMINI_API_KEY as string;
     aiClient = new GoogleGenAI({
       apiKey: key,
       httpOptions: {
@@ -37,8 +154,13 @@ function getGenAIClient() {
 }
 
 // API endpoint to draft patient emergency communication alerts
-app.post('/api/gemini/alert', async (req: express.Request, res: express.Response): Promise<void> => {
+const draftOutreachAlert = async (req: express.Request, res: express.Response): Promise<void> => {
   try {
+    const dispatcher = await requireDispatcherSession(req, res);
+    if (!dispatcher) {
+      return;
+    }
+
     const { hospitalName, patientName, bloodGroup, urgency, unitsRequired, condition } = req.body;
 
     if (!bloodGroup || !urgency) {
@@ -95,11 +217,21 @@ Guidelines:
       details: error.message 
     });
   }
-});
+};
+
+app.post('/api/outreach/alert', draftOutreachAlert);
+app.post('/api/gemini/alert', draftOutreachAlert);
 
 // Serve health status
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    service: 'bloodlink-backend',
+    environment: process.env.NODE_ENV || 'development',
+    supabaseConfigured: isSupabaseServerConfigured,
+    aiConfigured: isAiConfigured,
+    time: new Date().toISOString(),
+  });
 });
 
 async function startServer() {

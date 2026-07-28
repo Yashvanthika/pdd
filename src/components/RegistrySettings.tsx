@@ -16,9 +16,9 @@ interface RegistrySettingsProps {
   currentUser: User;
   users: User[];
   requests: BloodRequest[];
-  onVerifyUser: (userId: string, newStatus: 'APPROVED' | 'BANNED') => void;
+  onVerifyUser: (userId: string, newStatus: 'APPROVED' | 'BANNED') => Promise<void>;
   logs: SimulationLog[];
-  onClearLogs: () => void;
+  onClearLogs: () => Promise<void>;
   currentDateStr?: string;
 }
 

@@ -8,8 +8,8 @@ export type BloodGroup = 'O-' | 'O+' | 'A-' | 'A+' | 'B-' | 'B+' | 'AB-' | 'AB+'
 export type UrgencyLevel = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface Location {
-  lat: number;   // Simulated grid coordinate Y (e.g., scale 0 - 100)
-  lng: number;   // Simulated grid coordinate X (e.g., scale 0 - 100)
+  lat: number;   // Grid coordinate Y (scale 0 - 100)
+  lng: number;   // Grid coordinate X (scale 0 - 100)
   name?: string;
 }
 
@@ -24,7 +24,6 @@ export interface DonationRecord {
 export interface User {
   id: string;
   email: string;
-  password?: string;
   role: 'donor' | 'hospital' | 'admin';
   name: string;
   phone: string;
@@ -55,7 +54,7 @@ export interface Donor {
   lastDonationDate: string; // YYYY-MM-DD
   gender: string;
   age: number;
-  donationHistory?: DonationRecord[]; // Added history to Donor too
+  donationHistory?: DonationRecord[];
 }
 
 export interface BloodRequest {
@@ -70,7 +69,7 @@ export interface BloodRequest {
   condition: string;
   status: 'ACTIVE' | 'FULFILLED' | 'CANCELLED';
   aiDraftedAlert?: string;
-  donorResponses: Record<string, 'PENDING' | 'ACCEPTED' | 'REJECTED'>; // donorId -> response
+  donorResponses: Record<string, 'PENDING' | 'ACCEPTED' | 'REJECTED'>;
 }
 
 export interface SimulationLog {
@@ -79,4 +78,3 @@ export interface SimulationLog {
   type: 'INFO' | 'MATCH' | 'ALERT' | 'ACCEPT' | 'REJECT' | 'FULFILL';
   message: string;
 }
-
