@@ -1,6 +1,6 @@
 {
   "name": "BloodLink",
-  "description": "An intelligent emergency blood coordination platform connecting hospitals, patients, and donors in real-time.",
+  "description": "A production mobile donor directory for blood donor registration, secure sign-in, profile management, and location-based search.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

@@ -1,14 +1,9 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import express from 'express';
-import path from 'path';
 import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
+import { createVerify } from 'crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { BLOOD_GROUPS, type BloodGroup } from './src/mobile/bloodGroups';
+import { getCities, getDistricts, isValidLocation } from './src/data/indiaLocations';
 
 dotenv.config({ path: ['.env.local', '.env'] });
 
@@ -19,26 +14,16 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS || '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
-const supabasePublicKey = (
-  process.env.SUPABASE_PUBLISHABLE_KEY ||
-  process.env.SUPABASE_ANON_KEY ||
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY ||
-  ''
-).trim();
-const isSupabaseServerConfigured = Boolean(supabaseUrl && supabasePublicKey);
-const isAiConfigured = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY');
+const supabaseUrl = (process.env.SUPABASE_URL || '').trim();
+const supabasePublicKey = (process.env.SUPABASE_PUBLISHABLE_KEY || '').trim();
+const supabaseServiceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublicKey && supabaseServiceRoleKey);
+const FIREBASE_CERTS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
+let firebaseCertCache: { expiresAt: number; certs: Record<string, string> } | null = null;
 
 function getAllowedCorsOrigin(origin: string | undefined): string | null {
-  if (!origin || CORS_ORIGINS.length === 0) {
-    return null;
-  }
-
-  if (CORS_ORIGINS.includes('*')) {
-    return '*';
-  }
-
+  if (!origin || CORS_ORIGINS.length === 0) return null;
+  if (CORS_ORIGINS.includes('*')) return '*';
   return CORS_ORIGINS.includes(origin) ? origin : null;
 }
 
@@ -48,7 +33,7 @@ app.use((req, res, next) => {
 
   if (allowedOrigin) {
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
     res.setHeader('Vary', 'Origin');
   }
@@ -61,197 +46,545 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: '64kb' }));
+app.use(express.json({ limit: '128kb' }));
 
-function getSupabaseAuthClient(token: string): SupabaseClient {
-  return createClient(supabaseUrl, supabasePublicKey, {
+function getSupabaseAdmin(): SupabaseClient {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase backend credentials are not configured.');
+  }
+
+  return createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
     },
-    global: {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
   });
 }
 
-function getBearerToken(req: express.Request): string | null {
-  const header = req.headers.authorization || '';
-  const [scheme, token] = header.split(' ');
-
-  if (scheme?.toLowerCase() !== 'bearer' || !token) {
-    return null;
-  }
-
-  return token.trim();
+function isFirebaseConfigured(): boolean {
+  return Boolean(getFirebaseProjectId());
 }
 
-async function requireDispatcherSession(
-  req: express.Request,
-  res: express.Response
-): Promise<{ userId: string; role: string } | null> {
-  if (!isSupabaseServerConfigured) {
-    res.status(503).json({ error: 'Supabase authentication is not configured on this server.' });
-    return null;
+function getFirebaseProjectId(): string {
+  const explicitProjectId = process.env.FIREBASE_PROJECT_ID?.trim();
+  if (explicitProjectId) return explicitProjectId;
+
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
+  if (!serviceAccountJson) return '';
+
+  try {
+    const parsed = JSON.parse(serviceAccountJson);
+    return typeof parsed.project_id === 'string' ? parsed.project_id.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+function decodeBase64Url(value: string): Buffer {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+  return Buffer.from(padded, 'base64');
+}
+
+function decodeTokenPart<T>(value: string): T {
+  return JSON.parse(decodeBase64Url(value).toString('utf8')) as T;
+}
+
+function getMaxAge(header: string | null): number {
+  const match = header?.match(/max-age=(\d+)/);
+  return match ? Number(match[1]) : 3600;
+}
+
+async function getFirebaseCert(kid: string): Promise<string> {
+  const now = Date.now();
+  if (firebaseCertCache && firebaseCertCache.expiresAt > now && firebaseCertCache.certs[kid]) {
+    return firebaseCertCache.certs[kid];
   }
 
-  const token = getBearerToken(req);
-  if (!token) {
-    res.status(401).json({ error: 'Sign in again to use the outreach service.' });
-    return null;
+  const response = await fetch(FIREBASE_CERTS_URL);
+  if (!response.ok) {
+    throw new Error('Unable to fetch Firebase verification certificates.');
   }
 
-  const client = getSupabaseAuthClient(token);
-  const { data: authData, error: authError } = await client.auth.getUser(token);
-  if (authError || !authData.user) {
-    res.status(401).json({ error: 'Your session could not be verified.' });
-    return null;
+  const certs = await response.json() as Record<string, string>;
+  const maxAge = getMaxAge(response.headers.get('cache-control'));
+  firebaseCertCache = {
+    certs,
+    expiresAt: now + Math.max(maxAge - 60, 300) * 1000,
+  };
+
+  const cert = certs[kid];
+  if (!cert) {
+    throw new Error('Firebase verification certificate was not found.');
   }
 
-  const { data: profile, error: profileError } = await client
-    .from('profiles')
-    .select('role,status')
-    .eq('id', authData.user.id)
-    .single();
+  return cert;
+}
 
-  if (profileError || !profile) {
-    res.status(403).json({ error: 'Your BloodLink profile could not be verified.' });
-    return null;
+async function verifyFirebaseIdToken(idToken: string) {
+  const projectId = getFirebaseProjectId();
+  if (!projectId) {
+    throw new Error('Firebase project id is not configured.');
   }
 
-  if (!['hospital', 'admin'].includes(profile.role) || profile.status !== 'APPROVED') {
-    res.status(403).json({ error: 'Only approved hospital or administrator accounts can draft outreach alerts.' });
-    return null;
+  const [encodedHeader, encodedPayload, encodedSignature] = idToken.split('.');
+  if (!encodedHeader || !encodedPayload || !encodedSignature) {
+    throw new Error('Firebase phone verification token is invalid.');
   }
 
+  const header = decodeTokenPart<{ alg?: string; kid?: string }>(encodedHeader);
+  if (header.alg !== 'RS256' || !header.kid) {
+    throw new Error('Firebase phone verification token is invalid.');
+  }
+
+  const cert = await getFirebaseCert(header.kid);
+  const verifier = createVerify('RSA-SHA256');
+  verifier.update(`${encodedHeader}.${encodedPayload}`);
+  verifier.end();
+
+  if (!verifier.verify(cert, decodeBase64Url(encodedSignature))) {
+    throw new Error('Firebase phone verification token could not be verified.');
+  }
+
+  const payload = decodeTokenPart<{
+    aud?: string;
+    exp?: number;
+    iat?: number;
+    iss?: string;
+    phone_number?: string;
+    sub?: string;
+  }>(encodedPayload);
+
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.aud !== projectId || payload.iss !== `https://securetoken.google.com/${projectId}`) {
+    throw new Error('Firebase phone verification token belongs to another project.');
+  }
+
+  if (!payload.sub || !payload.exp || payload.exp <= now || !payload.iat || payload.iat > now + 300) {
+    throw new Error('Firebase phone verification token has expired.');
+  }
+
+  if (!payload.phone_number) {
+    throw new Error('Firebase phone verification token does not contain a phone number.');
+  }
+
+  return payload;
+}
+
+function normalizeIndianPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  return phone.trim();
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function asBoolean(value: unknown): boolean {
+  return value === true || value === 'true';
+}
+
+function asPositiveInteger(value: unknown, fallback = 1): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.floor(parsed));
+}
+
+function isBloodGroup(value: string): value is BloodGroup {
+  return BLOOD_GROUPS.includes(value as BloodGroup);
+}
+
+interface AuthenticatedRequest extends express.Request {
+  donorId?: string;
+}
+
+async function requireDonor(req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) {
+  if (!isSupabaseConfigured) {
+    res.status(503).json({ error: 'Backend authentication is not configured.' });
+    return;
+  }
+
+  const authHeader = req.headers.authorization || '';
+  const [scheme, token] = authHeader.split(' ');
+
+  if (scheme?.toLowerCase() !== 'bearer' || !token) {
+    res.status(401).json({ error: 'Sign in again to continue.' });
+    return;
+  }
+
+  try {
+    const { data, error } = await getSupabaseAdmin().auth.getUser(token.trim());
+    if (error || !data.user) {
+      res.status(401).json({ error: 'Your session could not be verified.' });
+      return;
+    }
+
+    req.donorId = data.user.id;
+    next();
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Unable to verify session.' });
+  }
+}
+
+function mapProfile(row: any) {
   return {
-    userId: authData.user.id,
-    role: profile.role,
+    id: row.id,
+    email: row.email,
+    phone: row.phone,
+    fullName: row.full_name,
+    bloodGroup: row.blood_group,
+    yearOfBirth: row.year_of_birth,
+    country: row.country,
+    state: row.state,
+    district: row.district,
+    city: row.city,
+    availableInEmergency: row.available_in_emergency,
+    displayConsent: row.display_consent,
+    lastDonationDate: row.last_donation_date,
+    lastDonationFacility: row.last_donation_facility,
+    lastDonationBloodGroup: row.last_donation_blood_group,
+    lastDonationUnits: row.last_donation_units,
+    lastDonationState: row.last_donation_state,
+    lastDonationDistrict: row.last_donation_district,
+    lastDonationCity: row.last_donation_city,
+    lastDonationNotes: row.last_donation_notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
-// Lazy-loaded GenAI Client to prevent crashes during startup if API key is not yet set
-let aiClient: GoogleGenAI | null = null;
-function getGenAIClient() {
-  if (!aiClient) {
-    if (!isAiConfigured) {
-      return null;
-    }
-
-    const key = process.env.GEMINI_API_KEY as string;
-    aiClient = new GoogleGenAI({
-      apiKey: key,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'bloodlink-web',
-        },
-      },
-    });
-  }
-  return aiClient;
-}
-
-// API endpoint to draft patient emergency communication alerts
-const draftOutreachAlert = async (req: express.Request, res: express.Response): Promise<void> => {
-  try {
-    const dispatcher = await requireDispatcherSession(req, res);
-    if (!dispatcher) {
-      return;
-    }
-
-    const { hospitalName, patientName, bloodGroup, urgency, unitsRequired, condition } = req.body;
-
-    if (!bloodGroup || !urgency) {
-      res.status(400).json({ error: 'Blood group and urgency are required parameters.' });
-      return;
-    }
-
-    const client = getGenAIClient();
-    
-    if (!client) {
-      // Fallback message drafting in case the AI API key is not supplied.
-      const fallbackPrompt = `Emergency blood request\nHospital: ${hospitalName || 'Local Medical Center'}\nPatient: ${patientName || 'Critical Patient'}\nBlood Type: ${bloodGroup} needed immediately.\nUrgency: ${urgency}\nUnits Required: ${unitsRequired || 1} unit(s).\nCondition details: ${condition || 'Undergoing urgent medical procedure'}.\nIf you are nearby and eligible, please accept this request in BloodLink.`;
-      res.json({
-        alertMessage: fallbackPrompt,
-        fallback: true,
-        message: 'Using local template because the AI outreach service is not configured.'
-      });
-      return;
-    }
-
-    const aiPrompt = `You are the primary dispatcher for 'BloodLink', an intelligent emergency blood coordination mobile application.
-Draft an extremely high-impact, direct, urgent, yet reassuring SMS outreach alert message to notify matched nearby eligible blood donors.
-
-Patient and request details:
-- Patient Name: ${patientName || 'Confidential (Anonymized Emergency)'}
-- Required Blood Group: ${bloodGroup}
-- Hospital Location: ${hospitalName || 'City Central General Hospital'}
-- Urgency Level: ${urgency} (${urgency === 'CRITICAL' ? 'Immediate danger, minutes count!' : 'High priority'})
-- Blood Units Required: ${unitsRequired || 'Multiple'} units
-- Medical Case Condition: ${condition || 'Surgical emergency / trauma'}
-
-Guidelines:
-1. Keep the message under 200 characters so it fits on a single mobile SMS text.
-2. Ensure you clearly state the Blood Type, Hospital, and a strong action-oriented call to response (e.g., "Tap the link below in-app to accept this emergency coordination!").
-3. Include critical urgency indicators depending on the Level ("🚨 EMERGENCY", "CRITICAL ALERT!").
-4. Maintain medical dignity and empathy. Do not write flowery or overly conversational introductory lines. Start directly with the emergency dispatcher.
-5. Provide ONLY the text of the alert. No other explanations, headers, formatting, or wrapping quotes.`;
-
-    const response = await client.models.generateContent({
-      model: 'gemini-3.5-flash',
-      contents: aiPrompt,
-    });
-
-    const text = response.text || '';
-    res.json({
-      alertMessage: text.trim().replace(/^["']|["']$/g, ''), // Strip surrounding blockquotes
-      fallback: false
-    });
-
-  } catch (error: any) {
-    console.error('AI outreach endpoint failed:', error);
-    res.status(500).json({ 
-      error: 'Failed to generate message template with the AI outreach service.', 
-      details: error.message 
-    });
-  }
-};
-
-app.post('/api/outreach/alert', draftOutreachAlert);
-app.post('/api/gemini/alert', draftOutreachAlert);
-
-// Serve health status
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
-    service: 'bloodlink-backend',
+    service: 'bloodlink-donor-directory',
     environment: process.env.NODE_ENV || 'development',
-    supabaseConfigured: isSupabaseServerConfigured,
-    aiConfigured: isAiConfigured,
+    supabaseConfigured: isSupabaseConfigured,
+    firebaseConfigured: isFirebaseConfigured(),
     time: new Date().toISOString(),
   });
 });
 
-async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+app.get('/api/locations', (_req, res) => {
+  res.json({ country: 'INDIA', locations: getDistricts() });
+});
+
+app.post('/api/auth/register-donor', async (req, res) => {
+  try {
+    if (!isSupabaseConfigured) {
+      res.status(503).json({ error: 'Supabase backend credentials are not configured.' });
+      return;
+    }
+
+    if (!isFirebaseConfigured()) {
+      res.status(503).json({ error: 'Firebase phone verification is not configured.' });
+      return;
+    }
+
+    const firebaseIdToken = asString(req.body.firebaseIdToken);
+    const email = asString(req.body.email).toLowerCase();
+    const password = asString(req.body.password);
+    const phone = normalizeIndianPhone(asString(req.body.phone));
+    const fullName = asString(req.body.fullName);
+    const bloodGroup = asString(req.body.bloodGroup);
+    const yearOfBirth = Number(req.body.yearOfBirth);
+    const country = 'INDIA';
+    const state = asString(req.body.state);
+    const district = asString(req.body.district);
+    const city = asString(req.body.city);
+    const availableInEmergency = asBoolean(req.body.availableInEmergency);
+    const displayConsent = asBoolean(req.body.displayConsent);
+
+    if (!firebaseIdToken) {
+      res.status(400).json({ error: 'Phone verification token is required.' });
+      return;
+    }
+
+    if (!email || password.length < 8 || !fullName || !phone || !isBloodGroup(bloodGroup) || !yearOfBirth) {
+      res.status(400).json({ error: 'Complete all required donor registration fields.' });
+      return;
+    }
+
+    if (!isValidLocation(state, district, city)) {
+      res.status(400).json({ error: 'Select a valid State, District, and City.' });
+      return;
+    }
+
+    if (!availableInEmergency || !displayConsent) {
+      res.status(400).json({ error: 'Emergency availability and contact display consent are required.' });
+      return;
+    }
+
+    const decodedToken = await verifyFirebaseIdToken(firebaseIdToken);
+    const verifiedPhone = normalizeIndianPhone(decodedToken.phone_number || '');
+    if (!verifiedPhone || verifiedPhone !== phone) {
+      res.status(400).json({ error: 'Verified phone number does not match the registration form.' });
+      return;
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { data: createdUser, error: createError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      phone,
+      email_confirm: true,
+      phone_confirm: true,
+      user_metadata: {
+        full_name: fullName,
+        donor_phone_verified: true,
+      },
     });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+
+    if (createError || !createdUser.user) {
+      res.status(400).json({ error: createError?.message || 'Unable to create donor account.' });
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('donor_profiles')
+      .insert({
+        id: createdUser.user.id,
+        email,
+        phone,
+        full_name: fullName,
+        blood_group: bloodGroup,
+        year_of_birth: yearOfBirth,
+        country,
+        state,
+        district,
+        city,
+        available_in_emergency: availableInEmergency,
+        display_consent: displayConsent,
+      })
+      .select()
+      .single();
+
+    if (profileError) {
+      await supabase.auth.admin.deleteUser(createdUser.user.id);
+      res.status(400).json({ error: profileError.message });
+      return;
+    }
+
+    res.status(201).json({ profile: mapProfile(profile) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Unable to register donor.' });
   }
+});
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[BloodLink Server] Listening on http://0.0.0.0:${PORT}`);
-  });
-}
+app.get('/api/me', requireDonor, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { data, error } = await getSupabaseAdmin()
+      .from('donor_profiles')
+      .select('*')
+      .eq('id', req.donorId)
+      .single();
 
-startServer();
+    if (error) {
+      res.status(404).json({ error: 'Donor profile was not found.' });
+      return;
+    }
+
+    res.json({ profile: mapProfile(data) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Unable to load donor profile.' });
+  }
+});
+
+app.put('/api/me', requireDonor, async (req: AuthenticatedRequest, res) => {
+  try {
+    const bloodGroup = asString(req.body.bloodGroup);
+    const state = asString(req.body.state);
+    const district = asString(req.body.district);
+    const city = asString(req.body.city);
+    const email = asString(req.body.email).toLowerCase();
+    const phone = normalizeIndianPhone(asString(req.body.phone));
+    const fullName = asString(req.body.fullName);
+    const yearOfBirth = Number(req.body.yearOfBirth);
+
+    if (!email || !phone || !fullName || !yearOfBirth || !isBloodGroup(bloodGroup) || !isValidLocation(state, district, city)) {
+      res.status(400).json({ error: 'Select valid donor and location details.' });
+      return;
+    }
+
+    const updatePayload = {
+      email,
+      phone,
+      full_name: fullName,
+      blood_group: bloodGroup,
+      year_of_birth: yearOfBirth,
+      country: 'INDIA',
+      state,
+      district,
+      city,
+      available_in_emergency: asBoolean(req.body.availableInEmergency),
+      display_consent: asBoolean(req.body.displayConsent),
+    };
+
+    const supabase = getSupabaseAdmin();
+    const { error: authUpdateError } = await supabase.auth.admin.updateUserById(req.donorId as string, {
+      email: updatePayload.email,
+      phone: updatePayload.phone,
+      user_metadata: { full_name: updatePayload.full_name },
+    });
+
+    if (authUpdateError) {
+      res.status(400).json({ error: authUpdateError.message });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('donor_profiles')
+      .update(updatePayload)
+      .eq('id', req.donorId)
+      .select()
+      .single();
+
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    res.json({ profile: mapProfile(data) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Unable to update profile.' });
+  }
+});
+
+app.post('/api/me/change-password', requireDonor, async (req: AuthenticatedRequest, res) => {
+  try {
+    const password = asString(req.body.password);
+    if (password.length < 8) {
+      res.status(400).json({ error: 'Password must be at least 8 characters.' });
+      return;
+    }
+
+    const { error } = await getSupabaseAdmin().auth.admin.updateUserById(req.donorId as string, { password });
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Unable to change password.' });
+  }
+});
+
+app.put('/api/me/last-donation', requireDonor, async (req: AuthenticatedRequest, res) => {
+  try {
+    const bloodGroup = asString(req.body.bloodGroup);
+    const state = asString(req.body.state);
+    const district = asString(req.body.district);
+    const city = asString(req.body.city);
+
+    if (!isBloodGroup(bloodGroup) || !isValidLocation(state, district, city)) {
+      res.status(400).json({ error: 'Select valid last donation details.' });
+      return;
+    }
+
+    const { data, error } = await getSupabaseAdmin()
+      .from('donor_profiles')
+      .update({
+        last_donation_date: asString(req.body.date) || null,
+        last_donation_facility: asString(req.body.facility) || null,
+        last_donation_blood_group: bloodGroup,
+        last_donation_units: asPositiveInteger(req.body.units),
+        last_donation_state: state,
+        last_donation_district: district,
+        last_donation_city: city,
+        last_donation_notes: asString(req.body.notes) || null,
+      })
+      .eq('id', req.donorId)
+      .select()
+      .single();
+
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    res.json({ profile: mapProfile(data) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Unable to update last donation details.' });
+  }
+});
+
+app.delete('/api/me', requireDonor, async (req: AuthenticatedRequest, res) => {
+  try {
+    const supabase = getSupabaseAdmin();
+    await supabase.from('donor_profiles').delete().eq('id', req.donorId);
+    const { error } = await supabase.auth.admin.deleteUser(req.donorId as string);
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Unable to delete donor profile.' });
+  }
+});
+
+app.get('/api/donors/search', requireDonor, async (req: AuthenticatedRequest, res) => {
+  try {
+    const bloodGroup = asString(req.query.bloodGroup);
+    const state = asString(req.query.state);
+    const district = asString(req.query.district);
+    const city = asString(req.query.city);
+
+    if (!isBloodGroup(bloodGroup) || !isValidLocation(state, district, city)) {
+      res.status(400).json({ error: 'Select a valid blood group, State, District, and City.' });
+      return;
+    }
+
+    const { data, error } = await getSupabaseAdmin()
+      .from('donor_profiles')
+      .select('id, full_name, phone, blood_group, country, state, district, city, available_in_emergency, last_donation_date')
+      .eq('blood_group', bloodGroup)
+      .eq('state', state)
+      .eq('district', district)
+      .eq('city', city)
+      .eq('available_in_emergency', true)
+      .eq('display_consent', true)
+      .neq('id', req.donorId)
+      .order('full_name', { ascending: true });
+
+    if (error) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    res.json({
+      donors: (data || []).map((row: any) => ({
+        id: row.id,
+        fullName: row.full_name,
+        phone: row.phone,
+        bloodGroup: row.blood_group,
+        country: row.country,
+        state: row.state,
+        district: row.district,
+        city: row.city,
+        availableInEmergency: row.available_in_emergency,
+        lastDonationDate: row.last_donation_date,
+      })),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Unable to search donors.' });
+  }
+});
+
+app.get('/api/locations/:state/districts', (req, res) => {
+  res.json({ districts: getDistricts(req.params.state) });
+});
+
+app.get('/api/locations/:state/:district/cities', (req, res) => {
+  res.json({ cities: getCities(req.params.state, req.params.district) });
+});
+
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Route not found.' });
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[BloodLink Server] Listening on http://0.0.0.0:${PORT}`);
+});

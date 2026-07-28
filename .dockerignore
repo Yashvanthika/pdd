@@ -1,5 +1,6 @@
 node_modules
 .pnpm-store
+.expo
 dist
 build
 coverage
@@ -9,5 +10,7 @@ coverage
 !.env.example
 ios
 android
+GoogleService-Info.plist
+google-services.json
 .DS_Store
 *.log

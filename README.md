@@ -1,30 +1,33 @@
 # BloodLink
 
-BloodLink is an emergency blood coordination application for donors, hospitals, and administrators. It includes donor verification, request dispatch, donor matching, outreach message drafting, donation completion, and audit views.
+BloodLink is a donor-focused mobile application for blood donor registration, secure sign-in, profile management, and location-based donor search.
+
+The frontend is an Expo React Native app for iOS and Android. The backend is a Node/Express API deployed on Dokploy and backed by Supabase Auth plus the `donor_profiles` table. Firebase Phone Auth verifies the mobile number before donor registration.
 
 ## Supabase Setup
 
 Run the schema in `supabase/schema.sql` from the Supabase SQL Editor before starting the app.
 
-Required local environment variables:
+Backend environment variables:
 
 ```env
-VITE_SUPABASE_URL=""
-VITE_SUPABASE_PUBLISHABLE_KEY=""
+NODE_ENV=development
+PORT=3000
+APP_URL="http://localhost:3000"
+CORS_ORIGINS="http://localhost:8081,http://localhost:19006"
 SUPABASE_URL=""
 SUPABASE_PUBLISHABLE_KEY=""
-GEMINI_API_KEY=""
-VITE_API_BASE_URL=""
-APP_URL=""
-CORS_ORIGINS=""
+SUPABASE_SERVICE_ROLE_KEY=""
+FIREBASE_PROJECT_ID=""
+FIREBASE_SERVICE_ACCOUNT_JSON=""
 ```
 
-Public signup supports donor and hospital accounts. To create an administrator, register an account first, then promote it in Supabase SQL:
+Mobile environment variables:
 
-```sql
-update public.profiles
-set role = 'admin', status = 'APPROVED'
-where email = 'admin@example.com';
+```env
+EXPO_PUBLIC_SUPABASE_URL=""
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=""
+EXPO_PUBLIC_API_BASE_URL="http://localhost:3000"
 ```
 
 ## Local Development
@@ -34,28 +37,37 @@ where email = 'admin@example.com';
    pnpm install
    ```
 
-2. Create a local environment file:
+2. Create a backend environment file:
    ```bash
    cp .env.example .env.local
    ```
 
-3. Add the required Supabase and server-side keys in `.env.local`.
+3. Add Supabase, Firebase project, and API values in `.env.local`.
 
-4. Start the app:
+4. Start the backend API:
+   ```bash
+   pnpm run dev:server
+   ```
+
+5. Start the Expo mobile app:
    ```bash
    pnpm run dev
    ```
 
+Firebase Phone Auth requires Expo development builds for iOS and Android. Expo Go cannot run the native Firebase Auth module.
+
 ## Production Build
 
+Build the Dokploy backend bundle:
+
 ```bash
-pnpm run build
+pnpm run build:server
 pnpm start
 ```
 
 ## Dokploy Deployment
 
-The backend is ready to deploy as one Dokploy application using the root `Dockerfile`.
+Deploy the backend API as one Dokploy application using the root `Dockerfile`.
 
 Recommended Dokploy settings:
 
@@ -73,28 +85,35 @@ Add these runtime variables in the Dokploy application Environment tab:
 NODE_ENV=production
 PORT=3000
 APP_URL=https://your-dokploy-domain.example
-CORS_ORIGINS=capacitor://localhost,http://localhost,https://your-dokploy-domain.example
-GEMINI_API_KEY=your_gemini_key
-SUPABASE_URL=https://ivytidzhluxpmxurpyra.supabase.co
+CORS_ORIGINS=https://your-mobile-api-client.example
+SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+FIREBASE_PROJECT_ID=your_firebase_project_id
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 ```
 
-Add these Dockerfile build arguments in Dokploy:
+Configure the mobile app with:
 
 ```env
-VITE_SUPABASE_URL=https://ivytidzhluxpmxurpyra.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
-VITE_API_BASE_URL=https://your-dokploy-domain.example
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+EXPO_PUBLIC_API_BASE_URL=https://your-dokploy-domain.example
 ```
 
-If the web app is served from the same Dokploy container, `VITE_API_BASE_URL` can be left blank for same-origin requests. For an iOS build that calls the Dokploy backend, set `VITE_API_BASE_URL` to the Dokploy domain before running the iOS build/sync commands.
+Add Firebase native app config files before creating development builds:
 
-## iOS
+- `google-services.json`
+- `GoogleService-Info.plist`
 
-After changing web assets, rebuild and sync Capacitor before opening the iOS project:
+## API Surface
 
-```bash
-pnpm run build
-pnpm exec cap sync ios
-pnpm exec cap open ios
-```
+- `GET /api/health`
+- `GET /api/locations`
+- `POST /api/auth/register-donor`
+- `GET /api/me`
+- `PUT /api/me`
+- `POST /api/me/change-password`
+- `PUT /api/me/last-donation`
+- `DELETE /api/me`
+- `GET /api/donors/search?bloodGroup=&state=&district=&city=`

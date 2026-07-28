@@ -1,5 +1,8 @@
 node_modules/
 .pnpm-store/
+.expo/
+android/
+ios/
 build/
 dist/
 coverage/
@@ -7,3 +10,5 @@ coverage/
 *.log
 .env*
 !.env.example
+GoogleService-Info.plist
+google-services.json
