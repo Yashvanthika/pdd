@@ -5,9 +5,9 @@
 
 import React, { useState } from 'react';
 import { User, BloodRequest, BloodGroup } from '../types';
-import { calculateDistance, evaluateEligibility, isDonationDateEligible } from '../utils/compatibility';
+import { calculateDistance, evaluateEligibility } from '../utils/compatibility';
 import { 
-  Droplet, MapPin, CheckCircle, Smartphone, Calendar, Info, 
+  Droplet, MapPin, CheckCircle, Smartphone, Calendar, 
   UserRound, Phone, Mail, Award, Clock, Compass, AlertCircle
 } from 'lucide-react';
 
@@ -40,7 +40,7 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
     ? calculateDistance(activeRequest.location.lat, activeRequest.location.lng, currentUser.location.lat, currentUser.location.lng)
     : 0;
 
-  const currentDateStr = '2026-06-01'; // Simulated current platform date
+  const currentDateStr = '2026-06-01';
   
   const eligibility = evaluateEligibility(
     bloodGroup,
@@ -72,7 +72,7 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
   const triggerAvailableToggle = () => {
     const updated = { ...currentUser, isAvailable: !currentUser.isAvailable };
     onUpdateDonorProfile(updated);
-    onAddLog('INFO', `Donor ${currentUser.name} toggled standby availability: ${updated.isAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}`);
+    onAddLog('INFO', `Donor ${currentUser.name} updated availability: ${updated.isAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}`);
   };
 
   const handleProfileSave = (e: React.FormEvent) => {
@@ -98,19 +98,19 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
       location: { lat, lng }
     };
     onUpdateDonorProfile(updated);
-    onAddLog('INFO', `Volunteer ${currentUser.name} relocated standings on grid map to: Lat ${lat}, Lng ${lng}`);
+    onAddLog('INFO', `Volunteer ${currentUser.name} updated service location to: Lat ${lat}, Lng ${lng}`);
   };
 
   const handleAccept = () => {
     if (!activeRequest) return;
     onSimulateResponse(currentUser.id, 'ACCEPTED');
-    onAddLog('ACCEPT', `🤝 DONOR PLEDGE: Volunteer ${currentUser.name} accepted request for patient ${activeRequest.patientName}.`);
+    onAddLog('ACCEPT', `DONOR ACCEPTED: Volunteer ${currentUser.name} accepted request for patient ${activeRequest.patientName}.`);
   };
 
   const handleDecline = () => {
     if (!activeRequest) return;
     onSimulateResponse(currentUser.id, 'REJECTED');
-    onAddLog('REJECT', `❌ DISPATCH DECLINED: Volunteer ${currentUser.name} declined request from ${activeRequest.hospitalName}.`);
+    onAddLog('REJECT', `DISPATCH DECLINED: Volunteer ${currentUser.name} declined request from ${activeRequest.hospitalName}.`);
   };
 
   return (
@@ -132,7 +132,7 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
             <div>
               <h3 className="text-lg font-black text-slate-900 leading-tight">{currentUser.name}</h3>
               <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1 mt-0.5">
-                <Award className="w-3.5 h-3.5 text-rose-500" /> Standby Donor Node
+                <Award className="w-3.5 h-3.5 text-rose-500" /> Verified Blood Donor
               </p>
             </div>
           </div>
@@ -149,7 +149,7 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
                 <div>
                   <span>Pending verification approval.</span>
-                  <p className="text-[9px] font-normal text-slate-500 mt-0.5">Administrator review required to enter matching grids.</p>
+                  <p className="text-[9px] font-normal text-slate-500 mt-0.5">Administrator review required before matching eligibility.</p>
                 </div>
               </div>
             )}
@@ -168,7 +168,7 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
                 </div>
                 <div className="flex items-center gap-2 text-xs text-slate-600">
                   <MapPin className="w-4 h-4 text-slate-400" />
-                  <span>Grid Map Pin: <strong className="font-mono text-slate-800">Lat {currentUser.location?.lat}, Lng {currentUser.location?.lng}</strong></span>
+                  <span>Service Location: <strong className="font-mono text-slate-800">Lat {currentUser.location?.lat}, Lng {currentUser.location?.lng}</strong></span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-slate-600">
                   <Compass className="w-4 h-4 text-slate-400" />
@@ -179,7 +179,7 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
               <div className="flex items-center justify-between border-t border-slate-100 pt-4 text-xs font-semibold">
                 <div className="space-y-0.5">
                   <span className="text-slate-800 block">Dispatch Availability</span>
-                  <span className="text-[10px] text-slate-400 font-normal">Toggle radar standby alerts</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Manage availability for urgent requests</span>
                 </div>
                 <button
                   onClick={triggerAvailableToggle}
@@ -197,7 +197,7 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
                 onClick={() => setIsEditProfile(true)}
                 className="w-full mt-2 bg-slate-100 hover:bg-slate-205 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl border border-slate-200 transition-colors cursor-pointer"
               >
-                Modify Donor Profile Info
+                Edit Donor Profile
               </button>
             </div>
           ) : (
@@ -297,7 +297,7 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
         {/* Donation Cooldown progress */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-xs p-6">
           <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase font-mono mb-4">
-            <Clock className="w-4 h-4 text-rose-500" /> Donation Frequency Cooldown
+            <Clock className="w-4 h-4 text-rose-500" /> Donation Eligibility Window
           </h4>
 
           <div className="space-y-4">
@@ -337,8 +337,8 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
         <div className="bg-white border border-slate-200 rounded-2xl shadow-xs p-6">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3.5 mb-4">
             <div>
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Live Dispatch Alerts</h3>
-              <p className="text-[10px] text-slate-500 font-medium">Notifications of critical matching alerts in your area</p>
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Urgent Requests</h3>
+              <p className="text-[10px] text-slate-500 font-medium">Compatible requests near your saved location</p>
             </div>
             {isMatchedInRadius && (
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
@@ -351,7 +351,7 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse"></span>
-                  <span className="text-[10px] font-bold text-rose-600 uppercase tracking-widest font-mono">🚨 URGENT MATCH ALERT</span>
+                  <span className="text-[10px] font-bold text-rose-600 uppercase tracking-widest font-mono">URGENT MATCH ALERT</span>
                 </div>
                 <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                   activeRequest.urgency === 'CRITICAL' ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-amber-150 bg-amber-100 text-amber-700'
@@ -366,7 +366,7 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
                   <h4 className="text-sm font-bold text-slate-800 leading-tight">{activeRequest.hospitalName}</h4>
                   <p className="text-[11px] text-slate-500 font-mono flex items-center gap-1.5 mt-2">
                     <MapPin className="w-3.5 h-3.5 text-rose-500" />
-                    Coordinate distance: {distance} km away
+                    Distance: {distance} km away
                   </p>
                 </div>
 
@@ -384,7 +384,7 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
 
               {activeRequest.aiDraftedAlert && (
                 <div className="bg-slate-900 border border-slate-800 text-slate-350 p-4 rounded-xl relative">
-                  <span className="absolute top-2.5 right-2.5 text-[8px] bg-slate-800 text-slate-450 px-1.5 py-0.25 rounded font-bold uppercase tracking-wider font-mono">SMS Payload</span>
+                  <span className="absolute top-2.5 right-2.5 text-[8px] bg-slate-800 text-slate-450 px-1.5 py-0.25 rounded font-bold uppercase tracking-wider font-mono">Message</span>
                   <p className="text-xs italic leading-relaxed text-slate-100 font-serif pr-10">
                     "{activeRequest.aiDraftedAlert}"
                   </p>
@@ -397,13 +397,13 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
                   onClick={handleDecline}
                   className="bg-white hover:bg-slate-50 text-slate-655 text-slate-600 font-bold text-xs py-2 px-5 rounded-xl border border-slate-200 cursor-pointer transition-colors"
                 >
-                  Decline Alert
+                  Decline Request
                 </button>
                 <button
                   onClick={handleAccept}
                   className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-2 px-5 rounded-xl shadow-md shadow-rose-900/10 flex items-center gap-1.5 cursor-pointer transition-colors"
                 >
-                  <Droplet className="w-4 h-4 fill-current" /> Accept Pledge Route
+                  <Droplet className="w-4 h-4 fill-current" /> Accept Request
                 </button>
               </div>
 
@@ -424,24 +424,24 @@ export const DonorPortal: React.FC<DonorPortalProps> = ({
                       <p className="text-[10px] text-slate-500 font-normal">
                         {myResponse === 'ACCEPTED' 
                           ? 'Thank you! The hospital coordinator has been notified of your transit status.' 
-                          : 'You declined this search alert.'}
+                          : 'You declined this request.'}
                       </p>
                     </div>
                   </div>
                   {myResponse === 'ACCEPTED' && (
                     <span className="text-[9px] bg-emerald-100 border border-emerald-200 font-mono text-emerald-700 px-2 py-0.5 rounded-md font-bold animate-pulse">
-                      ROUTE ACTIVE
+                      ACCEPTED
                     </span>
                   )}
                 </div>
               ) : (
                 <div className="text-center py-12 text-slate-400 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
                   <Smartphone className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                  <p className="text-xs font-bold text-slate-500">Awaiting Signal Alerts</p>
+                  <p className="text-xs font-bold text-slate-500">No Active Requests</p>
                   <p className="text-[10px] text-slate-400 mt-1 max-w-[280px] mx-auto">
                     {currentUser.isAvailable 
-                      ? 'Standby grid coordinates active. Matches within range will push here in real-time.' 
-                      : 'Radar deactivated. Toggle your availability status to receive emergency requests.'}
+                      ? 'Your availability is active. Compatible requests within range will appear here.' 
+                      : 'Availability is off. Turn it on to receive urgent requests.'}
                   </p>
                 </div>
               )}

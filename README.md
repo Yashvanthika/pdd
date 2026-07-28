@@ -1,20 +1,39 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# BloodLink
 
-# Run and deploy your AI Studio app
+BloodLink is an emergency blood coordination application for donors, hospitals, and administrators. It includes donor verification, request dispatch, donor matching, outreach message drafting, donation completion, and audit views.
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/4c825ad8-4e78-4a25-a317-0cbbc6d4d1f5
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
+## Local Development
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   ```bash
+   npm install
+   ```
+
+2. Create a local environment file:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+3. Add the required server-side keys in `.env.local`.
+
+4. Start the app:
+   ```bash
+   npm run dev
+   ```
+
+## Production Build
+
+```bash
+npm run build
+npm start
+```
+
+## iOS
+
+After changing web assets, rebuild and sync Capacitor before opening the iOS project:
+
+```bash
+npm run build
+npx cap sync ios
+npx cap open ios
+```

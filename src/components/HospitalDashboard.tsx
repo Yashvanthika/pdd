@@ -5,12 +5,13 @@
 
 import React, { useState } from 'react';
 import { BloodGroup, UrgencyLevel, BloodRequest, User, Location, SimulationLog } from '../types';
-import { isBloodCompatible, calculateDistance, evaluateEligibility } from '../utils/compatibility';
-import { SIMULATED_HOSPITALS, COMMON_CONDITIONS } from '../utils/mockData';
+import { calculateDistance, evaluateEligibility } from '../utils/compatibility';
+import { COMMON_CONDITIONS } from '../utils/referenceData';
+import { apiUrl } from '../utils/api';
 import { 
-  ShieldAlert, Radio, Flame, Sparkles, Send, Users, 
-  Check, Clock, RotateCcw, Droplet, MapPin, Phone, 
-  CheckCircle, History, Landmark, ClipboardList
+  ShieldAlert, Radio, Sparkles, Users, 
+  Check, Clock, RotateCcw, Phone, 
+  History, Landmark, ClipboardList
 } from 'lucide-react';
 
 interface HospitalDashboardProps {
@@ -53,7 +54,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
   const [unitsRequired, setUnitsRequired] = useState(2);
   const [condition, setCondition] = useState(COMMON_CONDITIONS[0]);
 
-  // Gemini & System state loaders
+  // Outreach drafting and request state
   const [isDraftingAI, setIsDraftingAI] = useState(false);
   const [draftedSms, setDraftedSms] = useState('');
   const [broadcasting, setBroadcasting] = useState(false);
@@ -75,13 +76,13 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
     return eligibility.eligible && dist <= radiusKm;
   });
 
-  // Draft dispatch alert using Gemini API
-  const draftSmsWithGemini = async () => {
+  // Draft dispatch alert using the configured AI outreach service
+  const draftOutreachMessage = async () => {
     setIsDraftingAI(true);
     setDraftedSms('');
     
     try {
-      const response = await fetch('/api/gemini/alert', {
+      const response = await fetch(apiUrl('/api/gemini/alert'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -99,15 +100,15 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
       const data = await response.json();
       if (response.ok) {
         setDraftedSms(data.alertMessage);
-        onAddLog('INFO', `Gemini AI drafted emergency alert SMS: "${data.alertMessage.substring(0, 45)}..."`);
+        onAddLog('INFO', `AI outreach service drafted emergency alert: "${data.alertMessage.substring(0, 45)}..."`);
       } else {
         throw new Error(data.error || 'Server error.');
       }
     } catch (err: any) {
-      console.error('Gemini call failed, template fallback', err);
-      const fallback = `🚨 EMERGENCY ALERT 🚨\n${hospitalName} needs Type ${bloodGroup} blood for patient ${patientName}. Units required: ${unitsRequired}. Tap to accept route coordinating.`;
+      console.error('AI outreach service unavailable, using local template', err);
+      const fallback = `Emergency blood request: ${hospitalName} needs type ${bloodGroup} blood for patient ${patientName}. Units required: ${unitsRequired}. Open BloodLink to respond.`;
       setDraftedSms(fallback);
-      onAddLog('INFO', 'Formulated local medical outreach template (Gemini API offline).');
+      onAddLog('INFO', 'Prepared local medical outreach template because the AI service was unavailable.');
     } finally {
       setIsDraftingAI(false);
     }
@@ -117,7 +118,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
     if (broadcasting) return;
     setBroadcasting(true);
 
-    const baseSms = draftedSms || `🚨 CRITICAL 🚨\n${hospitalName} requires ${unitsRequired} units of type ${bloodGroup} blood for patient ${patientName}. Match radius is ${radiusKm}km.`;
+    const baseSms = draftedSms || `Critical blood request: ${hospitalName} requires ${unitsRequired} units of type ${bloodGroup} blood for patient ${patientName}. Coverage radius is ${radiusKm}km.`;
 
     const donorResponses: Record<string, 'PENDING' | 'ACCEPTED' | 'REJECTED'> = {};
     eligibleDonors.forEach((d) => {
@@ -140,11 +141,10 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
     };
 
     onBroadcastRequest(newRequest);
-    onAddLog('ALERT', `🚨 DISPATCH LAUNCHED: Transmitting coordinates search alert to ${eligibleDonors.length} compatible volunteers within ${radiusKm}km.`);
+    onAddLog('ALERT', `DISPATCH SENT: Notified ${eligibleDonors.length} compatible approved volunteers within ${radiusKm}km.`);
 
-    // Simulate standard response delay timers for mock donors
+    // Queue response status updates for locally managed donor records.
     eligibleDonors.forEach((donor, i) => {
-      // Simulate accept / reject based on a reasonable probability (e.g. 75% accept for O-)
       const isAccept = Math.random() < 0.75;
       const delay = 2000 + (i * 2500) + (Math.random() * 1000);
 
@@ -234,7 +234,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 opacity-75 bg-rose-400"></span>
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
                 </span>
-                <span className="text-xs font-black text-slate-855 uppercase tracking-wider text-slate-800">EMERGENCY BROADCAST ACTIVE</span>
+                <span className="text-xs font-black text-slate-855 uppercase tracking-wider text-slate-800">EMERGENCY DISPATCH ACTIVE</span>
               </div>
               <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                 activeRequest.urgency === 'CRITICAL' ? 'bg-red-105 bg-red-100 text-red-700 animate-pulse' :
@@ -258,7 +258,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
                 <span className="font-semibold text-slate-800">{activeRequest.unitsRequired} Bag(s)</span>
               </div>
               <p className="text-[10px] text-slate-500 border-t border-slate-100 pt-2 font-medium">
-                📋 Diagnose Condition: <span className="text-slate-700">{activeRequest.condition}</span>
+                Clinical Need: <span className="text-slate-700">{activeRequest.condition}</span>
               </p>
             </div>
 
@@ -267,7 +267,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
               <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
                 <div className="flex items-center gap-1 text-[9px] font-bold text-rose-600 mb-1.5">
                   <Sparkles className="w-3.5 h-3.5" />
-                  SMS COORD OUTREACH TEXT
+                  Outreach Message
                 </div>
                 <p className="text-[11px] text-slate-655 leading-relaxed font-serif italic text-slate-600">
                   "{activeRequest.aiDraftedAlert}"
@@ -278,7 +278,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
             {/* Live Responses Tracker metrics */}
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-slate-500" /> Matching Candidates Response HUD
+                <Users className="w-4 h-4 text-slate-500" /> Candidate Responses
               </h4>
 
               <div className="grid grid-cols-3 gap-2">
@@ -306,7 +306,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
               <div className="max-h-[130px] overflow-y-auto border border-slate-200 rounded-xl p-2 space-y-1.5 bg-slate-50 select-none">
                 {Object.keys(activeRequest.donorResponses).length === 0 ? (
                   <div className="text-center py-6 text-xs text-slate-400">
-                    No active eligible donors found in coordinates radius.
+                    No eligible approved donors found within the selected radius.
                   </div>
                 ) : (
                   Object.entries(activeRequest.donorResponses).map(([donorId, response]) => {
@@ -340,7 +340,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
                               </span>
                             ) : (
                               <span className="text-[9px] text-amber-600 font-medium animate-pulse flex items-center gap-1">
-                                <Clock className="w-3 h-3 animate-spin" /> Alerted...
+                                <Clock className="w-3 h-3 animate-spin" /> Notified
                               </span>
                             )}
                           </div>
@@ -354,12 +354,12 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
                               <span>Phone: <strong className="text-slate-800 font-mono">{donorObj.phone}</strong></span>
                             </div>
                             <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-emerald-100/60">
-                              <span className="text-[9px] text-slate-400">Pledge secured. Ready to draw?</span>
+                              <span className="text-[9px] text-slate-400">Pledge secured. Ready to complete?</span>
                               <button
                                 onClick={() => onCompleteDonation(activeRequest.id, donorObj.id)}
                                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[9px] px-2.5 py-1 rounded cursor-pointer transition-colors shadow-sm"
                               >
-                                Mark Donated Completed
+                                Mark Donation Complete
                               </button>
                             </div>
                           </div>
@@ -378,7 +378,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
             className="w-full bg-slate-850 hover:bg-slate-900 bg-slate-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" />
-            Abort Dispatch Broadcast
+            Cancel Dispatch
           </button>
         </div>
       ) : (
@@ -389,8 +389,8 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
             <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
               <ShieldAlert className="w-5 h-5 text-rose-600" />
               <div>
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Broadcast Emergency Scanner</h3>
-                <p className="text-[10px] text-slate-400">Search compatible donor coordinates in neighborhood</p>
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Create Emergency Dispatch</h3>
+                <p className="text-[10px] text-slate-400">Find compatible approved donors within range</p>
               </div>
             </div>
 
@@ -442,7 +442,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Bags Units Needed</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Units Needed</label>
                 <input
                   type="number"
                   min="1"
@@ -456,7 +456,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
 
             {/* Diagnostics trauma profile */}
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Diagnosis Condition / Profile</label>
+              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Clinical Need / Profile</label>
               <select
                 value={condition}
                 onChange={(e) => setCondition(e.target.value)}
@@ -473,8 +473,8 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
             {/* Proximity Match Radius slider */}
             <div className="space-y-1.5 pt-2 border-t border-slate-100">
               <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
-                <span>📍 SCANNER BROADCAST RADII</span>
-                <span className="text-rose-600 font-mono text-xs">{radiusKm} km Circle Range</span>
+                <span>Dispatch Coverage Radius</span>
+                <span className="text-rose-600 font-mono text-xs">{radiusKm} km coverage</span>
               </div>
               <input
                 type="range"
@@ -494,7 +494,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                <span className="text-slate-500 font-medium">Eligible & Approved standby pool:</span>
+                <span className="text-slate-500 font-medium">Eligible approved donor pool:</span>
               </div>
               <span className="font-extrabold text-xs text-slate-800 bg-white border border-slate-200 px-3 py-0.5 rounded-md min-w-[35px] text-center">
                 {eligibleDonors.length} Donors
@@ -504,12 +504,12 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
             {/* AI SMS alert generation call */}
             <div className="space-y-2 border-t border-slate-100 pt-3">
               <button
-                onClick={draftSmsWithGemini}
+                onClick={draftOutreachMessage}
                 disabled={isDraftingAI}
                 className="w-full bg-rose-50 border border-rose-100 hover:bg-rose-100/50 text-rose-700 font-bold text-[10px] py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5 animate-pulse text-rose-500" />
-                {isDraftingAI ? 'Generating with Gemini...' : 'Draft SMS Alert message with Gemini'}
+                {isDraftingAI ? 'Drafting outreach message...' : 'Draft Outreach Message'}
               </button>
 
               {draftedSms && (
@@ -535,7 +535,7 @@ export const HospitalDashboard: React.FC<HospitalDashboardProps> = ({
             }`}
           >
             <Radio className="w-4.5 h-4.5 animate-pulse" />
-            Deploy Emergency Search
+            Send Emergency Dispatch
           </button>
         </div>
       )}

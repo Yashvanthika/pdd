@@ -53,7 +53,7 @@ export function isDonationDateEligible(lastDonationDate: string, currentDateStr:
 
 /**
  * Calculates Euclidean style distance in Kilometers for our grid coordinates.
- * Let's assume 1 grid unit corresponds to roughly 0.15 km to make a tight neighborhood simulation of 0 to 15km range.
+ * The current dispatch map treats one coordinate unit as roughly 0.12 km.
  */
 export function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const dx = lng1 - lng2;

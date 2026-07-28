@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { User, BloodGroup, Location } from '../types';
-import { Droplet, Mail, Lock, Phone, UserRound, MapPin, Sparkles, Building, ShieldAlert, Navigation } from 'lucide-react';
+import { Droplet, Mail, Lock, Phone, UserRound, MapPin, Building, ShieldAlert, Navigation } from 'lucide-react';
 
 interface AuthPortalProps {
   onLogin: (user: User) => void;
@@ -40,21 +40,13 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
 
   const [registerSuccess, setRegisterSuccess] = useState(false);
 
-  // Quick fill logins for testing
-  const handleQuickLogin = (email: string) => {
-    const matched = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (matched) {
-      onLogin(matched);
-    }
-  };
-
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
     const matched = users.find(
       u => u.email.toLowerCase() === loginEmail.trim().toLowerCase() && 
-      (u.password === loginPassword || loginPassword === 'password123') // support quick custom and seeded pwd
+      u.password === loginPassword
     );
 
     if (matched) {
@@ -64,7 +56,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
       }
       onLogin(matched);
     } else {
-      setLoginError('Invalid email or password combination. (Try quick-login options below)');
+      setLoginError('Invalid email or password.');
     }
   };
 
@@ -80,7 +72,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
     const newUser: User = {
       id: `${role}-${Date.now()}`,
       email: regEmail.trim().toLowerCase(),
-      password: regPassword || 'password123',
+      password: regPassword,
       role,
       name: regName.trim(),
       phone: regPhone.trim(),
@@ -128,7 +120,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
           Blood<span className="text-rose-500">Link</span>
         </h2>
         <p className="mt-2 text-xs text-slate-400 font-medium max-w-sm mx-auto uppercase tracking-wider">
-          Intelligent Emergency Coordination Portal
+          Emergency Blood Coordination Platform
         </p>
       </div>
 
@@ -138,9 +130,9 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
           {/* Success Register Alert */}
           {registerSuccess && (
             <div className="mb-6 bg-emerald-950/50 border border-emerald-500/50 text-emerald-400 p-4 rounded-xl text-center text-xs font-semibold animate-fadeIn">
-              🎉 Account Registered Successfully!
-              {role === 'donor' && <p className="text-[10px] text-slate-400 font-normal mt-1">Status set to PENDING (Awaiting Administrator Approval)</p>}
-              <p className="text-[10px] mt-1 text-emerald-300">Redirecting to Login...</p>
+              Account registration submitted.
+              {role === 'donor' && <p className="text-[10px] text-slate-400 font-normal mt-1">Status set to pending administrator approval.</p>}
+              <p className="text-[10px] mt-1 text-emerald-300">Redirecting to sign in...</p>
             </div>
           )}
 
@@ -175,7 +167,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               {loginError && (
                 <div className="bg-rose-950/50 border border-rose-500/50 text-rose-400 p-3 rounded-lg text-xs font-semibold">
-                  ⚠️ {loginError}
+                  {loginError}
                 </div>
               )}
 
@@ -219,36 +211,6 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
               >
                 Sign In to Dashboard
               </button>
-
-              {/* Quick Login Section for Testing */}
-              <div className="pt-6 border-t border-slate-900 mt-6 space-y-3">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">
-                  ⚡ Quick Demo Login Credentials (No password required)
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('donor@bloodlink.org')}
-                    className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold py-2 rounded-lg text-slate-300 hover:text-white cursor-pointer transition-colors"
-                  >
-                    👤 Donor (O-)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('hospital@bloodlink.org')}
-                    className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold py-2 rounded-lg text-slate-300 hover:text-white cursor-pointer transition-colors"
-                  >
-                    🏥 Hospital
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('admin@bloodlink.org')}
-                    className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold py-2 rounded-lg text-slate-300 hover:text-white cursor-pointer transition-colors"
-                  >
-                    🛡️ Admin Portal
-                  </button>
-                </div>
-              </div>
             </form>
           )}
 
@@ -258,7 +220,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
               
               {/* Role Switcher */}
               <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block mb-2 text-center">Select Your Platform Role</label>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block mb-2 text-center">Select Account Type</label>
                 <div className="grid grid-cols-3 gap-2 p-1 bg-slate-900 border border-slate-800 rounded-xl">
                   <button
                     type="button"
@@ -282,7 +244,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
                     }`}
                   >
                     <Building className="w-4 h-4 mb-0.5" />
-                    <span>Hospital / Hub</span>
+                    <span>Hospital / Center</span>
                   </button>
                   <button
                     type="button"
@@ -310,7 +272,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
                     required
                     value={regName}
                     onChange={(e) => setRegName(e.target.value)}
-                    placeholder={role === 'hospital' ? 'Apollo Specialty Hospital' : 'Vishwa Patel'}
+                    placeholder={role === 'hospital' ? 'Registered hospital name' : 'Legal full name'}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-650 focus:outline-none focus:border-rose-500"
                   />
                 </div>
@@ -335,7 +297,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
                     required
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
-                    placeholder="email@example.com"
+                    placeholder="name@organization.com"
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-650 focus:outline-none focus:border-rose-500"
                   />
                 </div>
@@ -427,7 +389,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
                 <div className="border-t border-slate-900 pt-3 mt-3 space-y-2">
                   <div className="flex justify-between items-center text-[11px] font-bold text-slate-400">
                     <span className="flex items-center gap-1">
-                      <Navigation className="w-3.5 h-3.5 text-rose-500" /> Pin Your Location Coordinates
+                      <Navigation className="w-3.5 h-3.5 text-rose-500" /> Set Service Location
                     </span>
                     <span className="text-rose-500 font-mono">
                       Lat: {selectedLoc.lat}, Lng: {selectedLoc.lng}
@@ -468,7 +430,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
                       />
                       
                       <text x="50%" y="90%" fill="#475569" fontSize="8" textAnchor="middle" className="select-none pointer-events-none">
-                        Interactive Coordinates Locator (Click to plot pin)
+                        Select a service location on the map
                       </text>
                     </svg>
                   </div>
@@ -491,7 +453,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin, users, onRegist
                 type="submit"
                 className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-3 px-4 rounded-xl shadow-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
-                Complete Registration
+                Submit Registration
               </button>
             </form>
           )}

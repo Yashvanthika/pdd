@@ -11,8 +11,7 @@ import { HospitalDashboard } from './components/HospitalDashboard';
 import { RegistrySettings } from './components/RegistrySettings';
 import { MapSimulation } from './components/MapSimulation';
 import { 
-  Droplet, Activity, LogOut, UserCheck, Shield, 
-  MapPin, Settings, HelpCircle, BellRing
+  Droplet, Activity, LogOut, UserCheck, Shield
 } from 'lucide-react';
 
 const DEFAULT_USERS: User[] = [
@@ -126,7 +125,7 @@ const DEFAULT_USERS: User[] = [
 ];
 
 export default function App() {
-  // DB & Session States
+  // Local persistence state
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('bloodlink_users');
     return saved ? JSON.parse(saved) : DEFAULT_USERS;
@@ -154,7 +153,7 @@ export default function App() {
         id: 'log-init-1',
         timestamp: new Date().toISOString(),
         type: 'INFO',
-        message: '⚡ BloodLink Intelligent Coordinator portal online.'
+        message: 'BloodLink coordination platform online.'
       }
     ];
   });
@@ -227,7 +226,7 @@ export default function App() {
     localStorage.setItem('bloodlink_logs', JSON.stringify(logs));
   }, [logs]);
 
-  // Sync tabs in real-time for dual testing
+  // Keep separate browser windows in sync for active operations.
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'bloodlink_active_request') {
@@ -292,7 +291,7 @@ export default function App() {
 
   const handleCancelRequest = () => {
     if (activeRequest) {
-      addLog('INFO', `❄ Dispatch Cancelled: Hospital canceled alert search radar.`);
+      addLog('INFO', `Dispatch cancelled: hospital cancelled the active request.`);
       setRequests((prev) => 
         prev.map((r) => (r.id === activeRequest.id ? { ...r, status: 'CANCELLED' } : r))
       );
@@ -308,9 +307,9 @@ export default function App() {
       const donorName = users.find(u => u.id === donorId)?.name || 'Matching Donor';
 
       if (response === 'ACCEPTED') {
-        addLog('ACCEPT', `🤝 PLEDGE CONFIRMED: Volunteer ${donorName} matched coordinates and accepted transit to hospital.`);
+        addLog('ACCEPT', `PLEDGE CONFIRMED: Volunteer ${donorName} accepted the request and is ready to coordinate with the hospital.`);
       } else {
-        addLog('REJECT', `❌ ALERT DECLINED: Volunteer ${donorName} declined coordinates due to congestion/congestion.`);
+        addLog('REJECT', `REQUEST DECLINED: Volunteer ${donorName} declined the request.`);
       }
 
       // Update requests list as well
@@ -329,9 +328,9 @@ export default function App() {
     setUsers((prev) => prev.map((u) => (u.id === updatedDonor.id ? updatedDonor : u)));
   };
 
-  // Automated Post-Donation workflow
+  // Post-donation workflow
   const handleCompleteDonation = (requestId: string, donorId: string) => {
-    const today = '2026-06-01'; // Simulated current date
+    const today = '2026-06-01';
     const targetReq = requests.find(r => r.id === requestId);
     const targetDonor = users.find(u => u.id === donorId);
     
@@ -365,7 +364,7 @@ export default function App() {
     );
     setActiveRequest(null);
 
-    addLog('FULFILL', `🏆 SUCCESSFUL FULFILLMENT: Patient ${targetReq.patientName}'s blood coordination completed! Donor ${targetDonor.name} completed whole blood draw. Spacing cooldown initiated.`);
+    addLog('FULFILL', `FULFILLMENT COMPLETE: Patient ${targetReq.patientName}'s blood coordination completed. Donor ${targetDonor.name} completed the whole blood draw and donation spacing is active.`);
   };
 
   const handleClearLogs = () => {
@@ -374,7 +373,7 @@ export default function App() {
         id: `log-${Date.now()}`,
         timestamp: new Date().toISOString(),
         type: 'INFO',
-        message: '🧹 Log stream cleared.'
+        message: 'Log stream cleared.'
       }
     ]);
   };
@@ -400,7 +399,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col antialiased">
       
       {/* 1. Header ribbon navigation */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 select-none shadow-md">
+      <header className="ios-safe-top bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 select-none shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="bg-rose-600 p-2 rounded-xl text-white shadow-md shadow-rose-900/10">
@@ -409,7 +408,7 @@ export default function App() {
             <div>
               <span className="text-lg font-black tracking-tight text-white font-display">BloodLink</span>
               <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">
-                <Activity className="w-3.5 h-3.5 text-rose-500" /> Rescue dispatch center
+                <Activity className="w-3.5 h-3.5 text-rose-500" /> Emergency coordination
               </p>
             </div>
           </div>
@@ -434,7 +433,7 @@ export default function App() {
             </div>
           ) : (
             <div className="flex items-center gap-2 text-slate-400 text-xs font-semibold">
-              <span>Secure Authentication Portal</span>
+              <span>Secure Sign In</span>
             </div>
           )}
         </div>
@@ -453,10 +452,10 @@ export default function App() {
               </span>
               <div>
                 <span className="text-[10px] font-black text-rose-800 block uppercase tracking-wide">
-                  CRITICAL DISPATCH RADAR ACTIVE
+                  CRITICAL DISPATCH ACTIVE
                 </span>
                 <p className="text-[11px] text-slate-655 font-medium text-slate-600">
-                  Target patient {activeRequest.patientName} ({activeRequest.bloodGroup}) at {activeRequest.hospitalName}. Broadcast Range: {radiusKm}km circle.
+                  Target patient {activeRequest.patientName} ({activeRequest.bloodGroup}) at {activeRequest.hospitalName}. Coverage range: {radiusKm}km.
                 </p>
               </div>
             </div>
@@ -466,7 +465,7 @@ export default function App() {
                 onClick={handleCancelRequest}
                 className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold px-4 py-1.5 rounded-lg cursor-pointer transition-colors shadow-sm"
               >
-                Abort dispatch radar
+                Cancel dispatch
               </button>
             </div>
           </div>
@@ -498,10 +497,10 @@ export default function App() {
                   <div className="space-y-4 h-full flex flex-col justify-between">
                     <div>
                       <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2 font-display">
-                        🏥 Hospital Dispatch scanner
+                        Hospital Dispatch
                       </h2>
                       <p className="text-xs text-slate-500 font-medium">
-                        Coordinate radar search vectors matching approved volunteer standby coordinates. Click anywhere inside the grid map to select target coordinates.
+                        Coordinate approved donor outreach and select the request location on the coverage map.
                       </p>
                     </div>
                     <div className="flex-1 mt-4">
@@ -544,10 +543,10 @@ export default function App() {
               <div className="space-y-2">
                 <div>
                   <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2 font-display">
-                    🛡️ Administrator command center
+                    Administrator Console
                   </h2>
                   <p className="text-xs text-slate-500 font-medium">
-                    Review pending donor verifications, inspect system databases, monitor active dispatches, and check trace logs.
+                    Review pending donor verifications, inspect registered accounts, monitor active dispatches, and review audit logs.
                   </p>
                 </div>
                 <div className="pt-3">
@@ -570,7 +569,7 @@ export default function App() {
 
       {/* Credit footer */}
       <footer className="bg-white border-t border-slate-200 mt-auto py-6 text-center text-xs text-slate-400 font-medium select-none">
-        <p>© 2026 BloodLink intelligent rescue coordinator ecosystem. Dedicated to accelerating volunteer standby response coordinates.</p>
+        <p>© 2026 BloodLink. Dedicated to faster emergency blood coordination.</p>
       </footer>
 
     </div>

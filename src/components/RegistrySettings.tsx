@@ -9,7 +9,7 @@ import { isBloodCompatible, evaluateEligibility } from '../utils/compatibility';
 import { 
   Users, Calendar, HelpCircle, Terminal, ClipboardCheck, 
   ShieldAlert, Activity, Droplet, Eye, Trash2, Check, X,
-  FileCheck, Shield, BarChart3, Database
+  FileCheck, Shield, BarChart3, Database, CheckCircle
 } from 'lucide-react';
 
 interface RegistrySettingsProps {
@@ -164,14 +164,14 @@ export const RegistrySettings: React.FC<RegistrySettingsProps> = ({
             <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50">
               <div className="bg-slate-100/80 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">Pending Donor Verifications</span>
-                <span className="text-[10px] text-slate-500">Requires review to enter emergency radar match pool</span>
+                <span className="text-[10px] text-slate-500">Requires review before matching eligibility</span>
               </div>
 
               {users.filter(u => u.role === 'donor' && u.status === 'PENDING').length === 0 ? (
                 <div className="text-center py-16 text-slate-450 text-slate-400 select-none bg-white">
                   <CheckCircle className="w-10 h-10 mx-auto text-emerald-450 text-emerald-500 mb-2" />
                   <p className="text-xs font-bold text-slate-655 text-slate-600">Verification Queue Empty</p>
-                  <p className="text-[10px] mt-1 text-slate-400">All registered volunteers are fully active in standbys.</p>
+                  <p className="text-[10px] mt-1 text-slate-400">All registered volunteers are ready for matching.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto select-none bg-white">
@@ -214,7 +214,7 @@ export const RegistrySettings: React.FC<RegistrySettingsProps> = ({
                                 <button
                                   onClick={() => onVerifyUser(u.id, 'APPROVED')}
                                   className="p-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-100 cursor-pointer transition-colors"
-                                  title="Approve standby volunteer"
+                                  title="Approve volunteer"
                                 >
                                   <Check className="w-4 h-4" />
                                 </button>
@@ -233,7 +233,7 @@ export const RegistrySettings: React.FC<RegistrySettingsProps> = ({
           {viewTab === 'database' && (
             <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50">
               <div className="bg-slate-100 px-4 py-2.5 border-b border-slate-200">
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">BloodLink Registered Accounts Database</span>
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">Registered Accounts</span>
               </div>
               <div className="overflow-x-auto select-none bg-white">
                 <table className="w-full text-left text-xs text-slate-500 border-collapse">
@@ -241,7 +241,7 @@ export const RegistrySettings: React.FC<RegistrySettingsProps> = ({
                     <tr>
                       <th className="px-4 py-2">User details</th>
                       <th className="px-4 py-2 text-center">System Role</th>
-                      <th className="px-4 py-2 text-center">Standby Status</th>
+                      <th className="px-4 py-2 text-center">Account Status</th>
                       <th className="px-4 py-2">Phone & Email</th>
                     </tr>
                   </thead>
@@ -289,7 +289,7 @@ export const RegistrySettings: React.FC<RegistrySettingsProps> = ({
           {viewTab === 'requests' && (
             <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50">
               <div className="bg-slate-100 px-4 py-2.5 border-b border-slate-200">
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">Auditing Emergency Requests Trail</span>
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">Emergency Request Audit Trail</span>
               </div>
               
               {requests.length === 0 ? (
@@ -347,7 +347,7 @@ export const RegistrySettings: React.FC<RegistrySettingsProps> = ({
           <div className="border border-slate-200 rounded-2xl p-4.5 bg-slate-50/50 select-none">
             <div className="flex items-center gap-1.5 border-b border-slate-100 pb-2 mb-3">
               <ClipboardCheck className="w-4 h-4 text-emerald-600" />
-              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Science RBC Match Grid</h4>
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">RBC Compatibility Matrix</h4>
             </div>
 
             <p className="text-[10px] text-slate-500 leading-relaxed font-medium mb-3">
@@ -384,7 +384,7 @@ export const RegistrySettings: React.FC<RegistrySettingsProps> = ({
             <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 select-none">
               <div className="flex items-center gap-1.5">
                 <Terminal className="w-3.5 h-3.5 text-rose-500 animate-pulse" />
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Live signal auditing trace</span>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Activity Audit Trail</span>
               </div>
               <button
                 onClick={onClearLogs}
@@ -397,7 +397,7 @@ export const RegistrySettings: React.FC<RegistrySettingsProps> = ({
             <div className="flex-1 overflow-y-auto space-y-1.5 py-2 my-1.5 max-h-[175px] scrollbar-thin select-none">
               {logs.length === 0 ? (
                 <div className="text-slate-500 text-center py-10">
-                  [Awaiting signal logs...]
+                  [Awaiting activity logs...]
                 </div>
               ) : (
                 logs.map((log) => {
@@ -411,9 +411,7 @@ export const RegistrySettings: React.FC<RegistrySettingsProps> = ({
                   return (
                     <div key={log.id} className="leading-normal flex gap-1 items-start text-[9px]">
                       <span className="text-slate-500 shrink-0">[{log.timestamp.split('T')[1].substring(0, 8)}]</span>
-                      <span className={`${colorClass}`}>
-                        <span dangerouslySetInnerHTML={{ __html: log.message }} />
-                      </span>
+                      <span className={`${colorClass}`}>{log.message}</span>
                     </div>
                   );
                 })
@@ -421,7 +419,7 @@ export const RegistrySettings: React.FC<RegistrySettingsProps> = ({
             </div>
 
             <div className="text-right text-[8px] text-slate-500 select-none">
-              System Audit Mode • {currentDateStr}
+              Audit Console • {currentDateStr}
             </div>
           </div>
 

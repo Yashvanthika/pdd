@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Donor, BloodRequest, Location } from '../types';
 import { calculateDistance, isBloodCompatible } from '../utils/compatibility';
-import { SIMULATED_HOSPITALS } from '../utils/mockData';
+import { REFERENCE_HOSPITALS } from '../utils/referenceData';
 import { MapPin, Syringe, Sparkles, Navigation, CheckCircle, XCircle } from 'lucide-react';
 
 interface MapSimulationProps {
@@ -60,9 +60,9 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
       <div className="absolute top-4 left-4 z-10 bg-white/95 backdrop-blur-md border border-slate-200/80 px-3 py-1.5 rounded-xl shadow-xs pointer-events-none">
         <h4 className="text-xs font-semibold text-slate-800 flex items-center gap-1">
           <Navigation className="w-3.5 h-3.5 text-rose-500 animate-pulse" />
-          Live Neighborhood Grid
+          Coverage Map
         </h4>
-        <p className="text-[10px] text-slate-500 font-medium">Click grid to set patient rescue location</p>
+        <p className="text-[10px] text-slate-500 font-medium">Select the request location</p>
       </div>
 
       {/* SVG Map Container */}
@@ -288,10 +288,10 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
             );
           })}
 
-          {/* Broadcast Scanning Radius Circle around Request Location */}
+          {/* Coverage radius around request location */}
           {selectedLocation && (
             <>
-              {/* Scan Circle (Visualizing radius in terms of grid units: 1 unit = 0.12km, therefore gridRadius = radiusKm / 0.12) */}
+              {/* Visual radius in coordinate units: 1 unit = 0.12km. */}
               <circle
                 cx={getX(selectedLocation.lng)}
                 cy={getY(selectedLocation.lat)}
@@ -378,8 +378,8 @@ export const MapSimulation: React.FC<MapSimulationProps> = ({
             );
           })}
 
-          {/* Predefined Referral Hospitals on Map */}
-          {SIMULATED_HOSPITALS.map((hospital) => {
+          {/* Reference hospitals on map */}
+          {REFERENCE_HOSPITALS.map((hospital) => {
             const isSelected = selectedLocation.lat === hospital.lat && selectedLocation.lng === hospital.lng;
             return (
               <g key={hospital.id} className="cursor-pointer transition-transform duration-150 hover:scale-125" onClick={(e) => {

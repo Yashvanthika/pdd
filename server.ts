@@ -9,10 +9,10 @@ import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
-dotenv.config();
+dotenv.config({ path: ['.env.local', '.env'] });
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 app.use(express.json());
 
@@ -28,7 +28,7 @@ function getGenAIClient() {
       apiKey: key,
       httpOptions: {
         headers: {
-          'User-Agent': 'aistudio-build',
+          'User-Agent': 'bloodlink-web',
         },
       },
     });
@@ -49,12 +49,12 @@ app.post('/api/gemini/alert', async (req: express.Request, res: express.Response
     const client = getGenAIClient();
     
     if (!client) {
-      // Fallback message drafting in case Gemini API key is not supplied
-      const fallbackPrompt = `🚨 EMERGENCY BLOOD ALERT 🚨\nHospital: ${hospitalName || 'Local Medical Center'}\nPatient: ${patientName || 'Critical Patient'}\nBlood Type: ${bloodGroup} needed immediately.\nUrgency: ${urgency}\nUnits Required: ${unitsRequired || 1} unit(s).\nCondition details: ${condition || 'Undergoing urgent medical procedure'}.\nIf you are nearby and eligible, please accept this request to coordinate instant transport! Help save a life today.`;
+      // Fallback message drafting in case the AI API key is not supplied.
+      const fallbackPrompt = `Emergency blood request\nHospital: ${hospitalName || 'Local Medical Center'}\nPatient: ${patientName || 'Critical Patient'}\nBlood Type: ${bloodGroup} needed immediately.\nUrgency: ${urgency}\nUnits Required: ${unitsRequired || 1} unit(s).\nCondition details: ${condition || 'Undergoing urgent medical procedure'}.\nIf you are nearby and eligible, please accept this request in BloodLink.`;
       res.json({
         alertMessage: fallbackPrompt,
         fallback: true,
-        message: 'Using algorithmic local template alert (Gemini API key is not configured in Settings > Secrets).'
+        message: 'Using local template because the AI outreach service is not configured.'
       });
       return;
     }
@@ -89,9 +89,9 @@ Guidelines:
     });
 
   } catch (error: any) {
-    console.error('Gemini alert endpoint failed:', error);
+    console.error('AI outreach endpoint failed:', error);
     res.status(500).json({ 
-      error: 'Failed to generate message template with Gemini AI.', 
+      error: 'Failed to generate message template with the AI outreach service.', 
       details: error.message 
     });
   }
