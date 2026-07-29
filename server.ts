@@ -17,6 +17,30 @@ const supabaseUrl = (process.env.SUPABASE_URL || '').trim();
 const supabasePublicKey = (process.env.SUPABASE_PUBLISHABLE_KEY || '').trim();
 const supabaseServiceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublicKey && supabaseServiceRoleKey);
+const donorProfileHealthColumns = [
+  'id',
+  'email',
+  'phone',
+  'full_name',
+  'blood_group',
+  'year_of_birth',
+  'country',
+  'state',
+  'district',
+  'city',
+  'available_in_emergency',
+  'display_consent',
+  'last_donation_date',
+  'last_donation_facility',
+  'last_donation_blood_group',
+  'last_donation_units',
+  'last_donation_state',
+  'last_donation_district',
+  'last_donation_city',
+  'last_donation_notes',
+  'created_at',
+  'updated_at',
+].join(',');
 
 function getAllowedCorsOrigin(origin: string | undefined): string | null {
   if (!origin || CORS_ORIGINS.length === 0) return null;
@@ -56,6 +80,15 @@ function getSupabaseAdmin(): SupabaseClient {
       autoRefreshToken: false,
     },
   });
+}
+
+function isMissingSchemaError(error: any): boolean {
+  const message = String(error?.message || '');
+  return error?.code === 'PGRST205' || message.includes('Could not find the table') || message.includes('schema cache');
+}
+
+function sendMissingSchema(res: express.Response) {
+  res.status(503).json({ error: 'Database schema is not ready. Run supabase/schema.sql in the configured Supabase project.' });
 }
 
 function normalizeIndianPhone(phone: string): string {
@@ -142,12 +175,29 @@ function mapProfile(row: any) {
   };
 }
 
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
+app.get('/api/health', async (_req, res) => {
+  let donorProfilesTableReady = false;
+  let databaseMessage = isSupabaseConfigured ? 'not checked' : 'Supabase backend credentials are not configured.';
+
+  if (isSupabaseConfigured) {
+    const { error } = await getSupabaseAdmin()
+      .from('donor_profiles')
+      .select(donorProfileHealthColumns)
+      .limit(1);
+
+    donorProfilesTableReady = !error;
+    databaseMessage = error ? error.message : 'ready';
+  }
+
+  const healthy = isSupabaseConfigured && donorProfilesTableReady;
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'ok' : 'degraded',
     service: 'bloodlink-donor-directory',
     environment: process.env.NODE_ENV || 'development',
     supabaseConfigured: isSupabaseConfigured,
+    donorProfilesTableReady,
+    donorProfilesSchemaReady: donorProfilesTableReady,
+    databaseMessage,
     time: new Date().toISOString(),
   });
 });
@@ -228,6 +278,11 @@ app.post('/api/auth/register-donor', async (req, res) => {
 
     if (profileError) {
       await supabase.auth.admin.deleteUser(createdUser.user.id);
+      if (isMissingSchemaError(profileError)) {
+        sendMissingSchema(res);
+        return;
+      }
+
       res.status(400).json({ error: profileError.message });
       return;
     }
@@ -247,6 +302,11 @@ app.get('/api/me', requireDonor, async (req: AuthenticatedRequest, res) => {
       .single();
 
     if (error) {
+      if (isMissingSchemaError(error)) {
+        sendMissingSchema(res);
+        return;
+      }
+
       res.status(404).json({ error: 'Donor profile was not found.' });
       return;
     }
@@ -309,6 +369,11 @@ app.put('/api/me', requireDonor, async (req: AuthenticatedRequest, res) => {
       .single();
 
     if (error) {
+      if (isMissingSchemaError(error)) {
+        sendMissingSchema(res);
+        return;
+      }
+
       res.status(400).json({ error: error.message });
       return;
     }
@@ -368,6 +433,11 @@ app.put('/api/me/last-donation', requireDonor, async (req: AuthenticatedRequest,
       .single();
 
     if (error) {
+      if (isMissingSchemaError(error)) {
+        sendMissingSchema(res);
+        return;
+      }
+
       res.status(400).json({ error: error.message });
       return;
     }
@@ -381,7 +451,17 @@ app.put('/api/me/last-donation', requireDonor, async (req: AuthenticatedRequest,
 app.delete('/api/me', requireDonor, async (req: AuthenticatedRequest, res) => {
   try {
     const supabase = getSupabaseAdmin();
-    await supabase.from('donor_profiles').delete().eq('id', req.donorId);
+    const { error: profileDeleteError } = await supabase.from('donor_profiles').delete().eq('id', req.donorId);
+    if (profileDeleteError) {
+      if (isMissingSchemaError(profileDeleteError)) {
+        sendMissingSchema(res);
+        return;
+      }
+
+      res.status(400).json({ error: profileDeleteError.message });
+      return;
+    }
+
     const { error } = await supabase.auth.admin.deleteUser(req.donorId as string);
     if (error) {
       res.status(400).json({ error: error.message });
@@ -419,6 +499,11 @@ app.get('/api/donors/search', requireDonor, async (req: AuthenticatedRequest, re
       .order('full_name', { ascending: true });
 
     if (error) {
+      if (isMissingSchemaError(error)) {
+        sendMissingSchema(res);
+        return;
+      }
+
       res.status(400).json({ error: error.message });
       return;
     }

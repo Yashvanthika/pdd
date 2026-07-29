@@ -11,17 +11,32 @@ import {
   View,
   type KeyboardTypeOptions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing } from './theme';
 
 export function Screen({ children, scroll = true }: { children: React.ReactNode; scroll?: boolean }) {
+  const insets = useSafeAreaInsets();
+  const topInset = insets.top > 0 ? insets.top + 24 : 44;
+  const bottomInset = Math.max(insets.bottom, 24);
+
   if (!scroll) {
-    return <View style={styles.screen}>{children}</View>;
+    return (
+      <View style={[styles.screen, { paddingBottom: bottomInset, paddingTop: topInset }]}>
+        {children}
+      </View>
+    );
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-      {children}
-    </ScrollView>
+    <View style={styles.screen}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + 20, paddingTop: topInset + 20 }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {children}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -211,9 +226,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContent: {
     padding: spacing.screen,
-    paddingBottom: 44,
   },
   header: {
     marginBottom: 18,

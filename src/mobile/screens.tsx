@@ -4,6 +4,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CheckboxRow, Header, LinkButton, Message, PrimaryButton, Screen, SelectField, TextField } from './components';
 import { useAuth } from './AuthContext';
 import { apiFetch, apiPublicFetch } from './api';
+import { API_ENDPOINTS } from './endpoints';
 import { BLOOD_GROUPS, type BloodGroup } from './bloodGroups';
 import type { AppStackParamList, AuthStackParamList } from './navigation';
 import { colors } from './theme';
@@ -27,6 +28,19 @@ function normalizePhone(value: string) {
   return value.trim();
 }
 
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isValidIndianPhone(value: string) {
+  const digits = value.replace(/\D/g, '');
+  return digits.length === 10 || (digits.length === 12 && digits.startsWith('91'));
+}
+
 function yearOptions() {
   const currentYear = new Date().getFullYear();
   return Array.from({ length: 83 }, (_unused, index) => String(currentYear - 18 - index));
@@ -38,12 +52,19 @@ export function LoginScreen({ navigation }: LoginProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const canSubmit = email.trim().length > 0 && password.length > 0;
 
   async function handleLogin() {
     setError('');
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail || !password) {
+      setError('Enter your email and password.');
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await signIn(email, password);
+      await signIn(normalizedEmail, password);
     } catch (err: any) {
       setError(err.message || 'Unable to sign in.');
     } finally {
@@ -57,7 +78,7 @@ export function LoginScreen({ navigation }: LoginProps) {
       {error ? <Message text={error} tone="error" /> : null}
       <TextField label="Email" value={email} onChangeText={setEmail} placeholder="name@example.com" keyboardType="email-address" />
       <TextField label="Password" value={password} onChangeText={setPassword} secureTextEntry placeholder="Password" />
-      <PrimaryButton title={submitting ? 'Signing In' : 'Sign In'} onPress={handleLogin} disabled={submitting || !email || !password} />
+      <PrimaryButton title={submitting ? 'Signing In' : 'Sign In'} onPress={handleLogin} disabled={submitting || !canSubmit} />
       <View style={{ marginTop: 10 }}>
         <LinkButton title="Create donor account" onPress={() => navigation.navigate('RegisterProfile')} />
         <LinkButton title="Forgot password" onPress={() => navigation.navigate('ForgotPassword')} />
@@ -85,31 +106,58 @@ export function RegisterProfileScreen({ navigation }: RegisterProfileProps) {
   const years = useMemo(yearOptions, []);
   const districts = state ? getDistricts(state) as string[] : [];
   const cities = state && district ? getCities(state, district) : [];
+  const canRegister = Boolean(
+    email.trim()
+    && password
+    && confirmPassword
+    && phone.trim()
+    && fullName.trim()
+    && yearOfBirth
+    && state
+    && district
+    && city
+    && available
+    && consent,
+  );
 
   async function submit() {
     setError('');
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedFullName = fullName.trim();
+    const normalizedPhone = normalizePhone(phone);
+    const selectedYearOfBirth = Number(yearOfBirth);
+
+    if (!isValidEmail(normalizedEmail)) {
+      setError('Enter a valid email address.');
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
       return;
     }
 
-    if (phone.replace(/\D/g, '').length < 10) {
+    if (!isValidIndianPhone(phone)) {
       setError('Enter a valid 10 digit mobile number.');
       return;
     }
 
     setSubmitting(true);
     try {
-      await apiPublicFetch<{ profile: DonorProfile }>('/api/auth/register-donor', {
+      await apiPublicFetch<{ profile: DonorProfile }>(API_ENDPOINTS.registerDonor, {
         method: 'POST',
         body: JSON.stringify({
-          email,
+          email: normalizedEmail,
           password,
-          phone: normalizePhone(phone),
-          fullName,
+          phone: normalizedPhone,
+          fullName: normalizedFullName,
           bloodGroup,
-          yearOfBirth: Number(yearOfBirth),
+          yearOfBirth: selectedYearOfBirth,
           state,
           district,
           city,
@@ -147,7 +195,7 @@ export function RegisterProfileScreen({ navigation }: RegisterProfileProps) {
       <PrimaryButton
         title={submitting ? 'Registering' : 'Register'}
         onPress={submit}
-        disabled={submitting || !email || !password || !phone || !fullName || !yearOfBirth || !state || !district || !city || !available || !consent}
+        disabled={submitting || !canRegister}
       />
     </Screen>
   );
@@ -233,7 +281,7 @@ export function ResultsScreen({ navigation, route }: ResultsProps) {
     setError('');
     try {
       const query = new URLSearchParams(route.params).toString();
-      const data = await apiFetch<{ donors: DonorSearchResult[] }>(`/api/donors/search?${query}`);
+      const data = await apiFetch<{ donors: DonorSearchResult[] }>(`${API_ENDPOINTS.donorSearch}?${query}`);
       setDonors(data.donors);
     } catch (err: any) {
       setError(err.message || 'Unable to load donors.');
@@ -349,7 +397,7 @@ export function EditProfileScreen({ navigation }: EditProfileProps) {
     setMessage('');
     setSubmitting(true);
     try {
-      await apiFetch<{ profile: DonorProfile }>('/api/me', {
+      await apiFetch<{ profile: DonorProfile }>(API_ENDPOINTS.me, {
         method: 'PUT',
         body: JSON.stringify({
           email,
@@ -411,7 +459,7 @@ export function ChangePasswordScreen({ navigation }: ChangePasswordProps) {
 
     setSubmitting(true);
     try {
-      await apiFetch<{ ok: true }>('/api/me/change-password', {
+      await apiFetch<{ ok: true }>(API_ENDPOINTS.changePassword, {
         method: 'POST',
         body: JSON.stringify({ password }),
       });
@@ -459,7 +507,7 @@ export function LastDonationScreen({ navigation }: LastDonationProps) {
     setError('');
     setSubmitting(true);
     try {
-      await apiFetch<{ profile: DonorProfile }>('/api/me/last-donation', {
+      await apiFetch<{ profile: DonorProfile }>(API_ENDPOINTS.lastDonation, {
         method: 'PUT',
         body: JSON.stringify({
           date,

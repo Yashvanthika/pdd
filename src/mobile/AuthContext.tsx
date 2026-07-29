@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { apiFetch } from './api';
+import { API_ENDPOINTS } from './endpoints';
 import { requireSupabaseConfig, supabase } from './supabase';
 import type { DonorProfile } from './types';
 
@@ -23,7 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refreshProfile = useCallback(async () => {
-    const { profile: nextProfile } = await apiFetch<{ profile: DonorProfile }>('/api/me');
+    const { profile: nextProfile } = await apiFetch<{ profile: DonorProfile }>(API_ENDPOINTS.me);
     setProfile(nextProfile);
   }, []);
 
@@ -63,13 +64,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     requireSupabaseConfig();
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !password) {
+      throw new Error('Enter your email and password.');
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       password,
     });
     if (error) throw error;
-    setSession(data.session);
-    await refreshProfile();
+
+    if (!data.session) {
+      throw new Error('Unable to start a sign-in session.');
+    }
+
+    try {
+      await refreshProfile();
+      setSession(data.session);
+    } catch (profileError: any) {
+      await supabase.auth.signOut();
+      setSession(null);
+      setProfile(null);
+      throw new Error(profileError.message || 'Unable to load your donor profile.');
+    }
   }, [refreshProfile]);
 
   const signOut = useCallback(async () => {
@@ -85,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteProfile = useCallback(async () => {
-    await apiFetch<{ ok: true }>('/api/me', { method: 'DELETE' });
+    await apiFetch<{ ok: true }>(API_ENDPOINTS.me, { method: 'DELETE' });
     await signOut();
   }, [signOut]);
 

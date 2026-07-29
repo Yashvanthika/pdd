@@ -6,7 +6,7 @@ The frontend is an Expo React Native app for iOS and Android. The backend is a N
 
 ## Supabase Setup
 
-Run the schema in `supabase/schema.sql` from the Supabase SQL Editor before starting the app.
+Run the schema in `supabase/schema.sql` from the Supabase SQL Editor before starting the app. The backend health endpoint checks that the configured Supabase project has the expected `donor_profiles` schema; signup and login will not work until that schema is present.
 
 Backend environment variables:
 
