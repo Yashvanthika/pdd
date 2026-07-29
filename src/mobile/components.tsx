@@ -51,8 +51,17 @@ export function Header({ title, subtitle, back, action }: {
     <View style={styles.header}>
       <View style={styles.headerRow}>
         {back ? (
-          <Pressable onPress={back} style={styles.iconButton}>
-            <Text style={styles.iconText}>{'<'}</Text>
+          <Pressable
+            accessibilityLabel="Back"
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={back}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+          >
+            <View pointerEvents="none" style={styles.backChevron}>
+              <View style={[styles.backChevronLine, styles.backChevronTop]} />
+              <View style={[styles.backChevronLine, styles.backChevronBottom]} />
+            </View>
           </Pressable>
         ) : null}
         <View style={styles.headerText}>
@@ -246,14 +255,32 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: 'center',
-    height: 36,
+    height: 44,
     justifyContent: 'center',
-    width: 36,
+    width: 34,
   },
-  iconText: {
-    color: colors.primaryDark,
-    fontSize: 28,
-    fontWeight: '800',
+  iconButtonPressed: {
+    opacity: 0.35,
+  },
+  backChevron: {
+    height: 28,
+    width: 18,
+  },
+  backChevronLine: {
+    backgroundColor: colors.primaryDark,
+    borderRadius: 2,
+    height: 4,
+    left: 0,
+    position: 'absolute',
+    width: 20,
+  },
+  backChevronTop: {
+    top: 6,
+    transform: [{ rotate: '-45deg' }],
+  },
+  backChevronBottom: {
+    bottom: 6,
+    transform: [{ rotate: '45deg' }],
   },
   title: {
     color: colors.text,

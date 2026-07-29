@@ -43,12 +43,18 @@ EXPO_PUBLIC_API_TIMEOUT_MS="15000"
 
 3. Add Supabase and API values in `.env.local`.
 
-4. Start the backend API:
+4. Seed searchable test donors:
+   ```bash
+   pnpm run seed:test-donors
+   ```
+   This creates five consented test donors for every city in `src/data/indiaLocations.ts`, including two `A+` donors per city plus varied additional blood groups. Seed emails use `test.donor.NNNN@bloodlink.test`, all seeded test accounts use password `BloodLinkTest#2026`, and displayed phone numbers use test-safe `+910000NNNNNN` values.
+
+5. Start the backend API:
    ```bash
    pnpm run dev:server
    ```
 
-5. Start the Expo mobile app:
+6. Start the Expo mobile app:
    ```bash
    pnpm run dev
    ```

@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CheckboxRow, Header, LinkButton, Message, PrimaryButton, Screen, SelectField, TextField } from './components';
 import { useAuth } from './AuthContext';
 import { apiFetch, apiPublicFetch } from './api';
 import { API_ENDPOINTS } from './endpoints';
 import { BLOOD_GROUPS, type BloodGroup } from './bloodGroups';
+import { BLOOD_FACTS, getBloodFact, type BloodFactItem, type BloodFactCategory } from './bloodFacts';
 import type { AppStackParamList, AuthStackParamList } from './navigation';
 import { colors } from './theme';
 import type { DonorProfile, DonorSearchResult } from './types';
@@ -16,10 +18,13 @@ type RegisterProfileProps = NativeStackScreenProps<AuthStackParamList, 'Register
 type ForgotPasswordProps = NativeStackScreenProps<AuthStackParamList, 'ForgotPassword'>;
 type SearchProps = NativeStackScreenProps<AppStackParamList, 'Search'>;
 type ResultsProps = NativeStackScreenProps<AppStackParamList, 'Results'>;
-type MyPageProps = NativeStackScreenProps<AppStackParamList, 'MyPage'>;
+type MyProfileProps = NativeStackScreenProps<AppStackParamList, 'MyProfile'>;
 type EditProfileProps = NativeStackScreenProps<AppStackParamList, 'EditProfile'>;
 type ChangePasswordProps = NativeStackScreenProps<AppStackParamList, 'ChangePassword'>;
 type LastDonationProps = NativeStackScreenProps<AppStackParamList, 'LastDonation'>;
+type SettingsProps = NativeStackScreenProps<AppStackParamList, 'Settings'>;
+type BloodFactsProps = NativeStackScreenProps<AppStackParamList, 'BloodFacts'>;
+type BloodFactDetailProps = NativeStackScreenProps<AppStackParamList, 'BloodFactDetail'>;
 
 function normalizePhone(value: string) {
   const digits = value.replace(/\D/g, '');
@@ -44,6 +49,134 @@ function isValidIndianPhone(value: string) {
 function yearOptions() {
   const currentYear = new Date().getFullYear();
   return Array.from({ length: 83 }, (_unused, index) => String(currentYear - 18 - index));
+}
+
+function displayValue(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === '') return 'Not provided';
+  return String(value);
+}
+
+function yesNo(value: boolean) {
+  return value ? 'Yes' : 'No';
+}
+
+function PencilIcon() {
+  return <Ionicons color={colors.primaryDark} name="create-outline" size={23} />;
+}
+
+function DonationIcon() {
+  return (
+    <View pointerEvents="none" style={styles.optionIcon}>
+      <Ionicons color={colors.danger} name="water-outline" size={22} />
+    </View>
+  );
+}
+
+function LockIcon() {
+  return (
+    <View pointerEvents="none" style={styles.optionIcon}>
+      <Ionicons color={colors.primaryDark} name="lock-closed-outline" size={22} />
+    </View>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <View pointerEvents="none" style={styles.optionIcon}>
+      <Ionicons color={colors.primaryDark} name="settings-outline" size={22} />
+    </View>
+  );
+}
+
+function FactsIcon() {
+  return (
+    <View pointerEvents="none" style={styles.optionIcon}>
+      <Ionicons color={colors.primaryDark} name="book-outline" size={22} />
+    </View>
+  );
+}
+
+function RowChevron() {
+  return <Ionicons color={colors.muted} name="chevron-forward" size={24} />;
+}
+
+function ProfileAvatar({ compact = false }: { compact?: boolean }) {
+  return (
+    <View style={compact ? styles.profileAvatarCompact : styles.profileAvatar}>
+      <Ionicons color={colors.primaryDark} name="person-circle-outline" size={compact ? 31 : 72} />
+    </View>
+  );
+}
+
+function ProfileOption({ title, onPress, icon }: {
+  title: string;
+  onPress: () => void;
+  icon: React.ReactNode;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.profileOption, pressed && styles.profileOptionPressed]}
+    >
+      {icon}
+      <Text style={styles.profileOptionText}>{title}</Text>
+      <RowChevron />
+    </Pressable>
+  );
+}
+
+function FactCategoryRow({ category, index, onPress }: {
+  category: BloodFactCategory;
+  index: number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.factCategoryRow, pressed && styles.profileOptionPressed]}
+    >
+      <View style={styles.factCategoryNumber}>
+        <Text style={styles.factCategoryNumberText}>{index + 1}</Text>
+      </View>
+      <View style={styles.factCategoryText}>
+        <Text style={styles.factCategoryTitle}>{category.title}</Text>
+        <Text style={styles.factCategorySubtitle}>{category.subtitle}</Text>
+      </View>
+      <RowChevron />
+    </Pressable>
+  );
+}
+
+function FactContent({ item }: { item: BloodFactItem }) {
+  if (item.kind === 'paragraph') {
+    return <Text style={[styles.factParagraph, item.strong && styles.factParagraphStrong]}>{item.text}</Text>;
+  }
+
+  if (item.kind === 'table') {
+    return (
+      <View style={styles.factTable}>
+        {item.rows.map(([left, right]) => (
+          <View key={`${left}-${right}`} style={styles.factTableRow}>
+            <Text style={styles.factTableCell}>{left}</Text>
+            <Text style={styles.factTableCell}>{right}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.factBullets}>
+      {item.items.map((text) => (
+        <View key={text} style={styles.factBulletRow}>
+          <View style={styles.factBulletDot} />
+          <Text style={styles.factBulletText}>{text}</Text>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 export function LoginScreen({ navigation }: LoginProps) {
@@ -255,8 +388,14 @@ export function SearchScreen({ navigation }: SearchProps) {
         title="Search Donors"
         subtitle="Find available donors by blood group and location."
         action={(
-          <Pressable style={styles.profileButton} onPress={() => navigation.navigate('MyPage')}>
-            <Text style={styles.profileIcon}>Profile</Text>
+          <Pressable
+            accessibilityLabel="Open my page"
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={() => navigation.navigate('MyProfile')}
+            style={({ pressed }) => [styles.profileButton, pressed && styles.profileButtonPressed]}
+          >
+            <ProfileAvatar compact />
           </Pressable>
         )}
       />
@@ -336,8 +475,120 @@ export function ResultsScreen({ navigation, route }: ResultsProps) {
   );
 }
 
-export function MyPageScreen({ navigation }: MyPageProps) {
-  const { deleteProfile, signOut } = useAuth();
+export function MyProfileScreen({ navigation }: MyProfileProps) {
+  const { profile, signOut } = useAuth();
+  async function logout() {
+    await signOut();
+  }
+
+  const profileDetails = profile ? [
+    { label: 'Mobile Number', value: displayValue(profile.phone) },
+    { label: 'Blood Group', value: displayValue(profile.bloodGroup) },
+    { label: 'Year of Birth', value: displayValue(profile.yearOfBirth) },
+    { label: 'Country', value: displayValue(profile.country) },
+    { label: 'State', value: displayValue(profile.state) },
+    { label: 'District', value: displayValue(profile.district) },
+    { label: 'City', value: displayValue(profile.city) },
+    { label: 'Available in Emergency', value: yesNo(profile.availableInEmergency) },
+    { label: 'Contact Details Visible', value: yesNo(profile.displayConsent) },
+  ] : [];
+
+  return (
+    <Screen>
+      <Header title="My Profile" back={() => navigation.goBack()} />
+      {profile ? (
+        <View style={styles.profilePanel}>
+          <View style={styles.profileHeader}>
+            <ProfileAvatar />
+            <View style={styles.profileIdentity}>
+              <Text numberOfLines={2} style={styles.profileName}>{profile.fullName}</Text>
+              <Text numberOfLines={1} style={styles.profileEmail}>{profile.email}</Text>
+            </View>
+            <Pressable
+              accessibilityLabel="Edit profile"
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => navigation.navigate('EditProfile')}
+              style={({ pressed }) => [styles.editProfileButton, pressed && styles.profileOptionPressed]}
+            >
+              <PencilIcon />
+            </Pressable>
+          </View>
+          <View style={styles.profileDetails}>
+            {profileDetails.map((item) => (
+              <View key={item.label} style={styles.profileDetailRow}>
+                <Text style={styles.profileDetailLabel}>{item.label}</Text>
+                <Text style={styles.profileDetailValue}>{item.value}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : (
+        <Message text="Profile details are not available right now." tone="error" />
+      )}
+      <View style={styles.profileOptions}>
+        <ProfileOption title="Blood Donation Facts" icon={<FactsIcon />} onPress={() => navigation.navigate('BloodFacts')} />
+        <ProfileOption title="Last Donation Details" icon={<DonationIcon />} onPress={() => navigation.navigate('LastDonation')} />
+        <ProfileOption title="Change Password" icon={<LockIcon />} onPress={() => navigation.navigate('ChangePassword')} />
+        <ProfileOption title="Settings" icon={<SettingsIcon />} onPress={() => navigation.navigate('Settings')} />
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        onPress={logout}
+        style={({ pressed }) => [styles.logoutButton, pressed && styles.logoutButtonPressed]}
+      >
+        <Text style={styles.logoutButtonText}>Log out</Text>
+      </Pressable>
+    </Screen>
+  );
+}
+
+export function BloodFactsScreen({ navigation }: BloodFactsProps) {
+  return (
+    <Screen>
+      <Header title="Blood Donation Facts" back={() => navigation.goBack()} />
+      <View style={styles.factCategoryList}>
+        {BLOOD_FACTS.map((category, index) => (
+          <FactCategoryRow
+            key={category.id}
+            category={category}
+            index={index}
+            onPress={() => navigation.navigate('BloodFactDetail', { factId: category.id })}
+          />
+        ))}
+      </View>
+    </Screen>
+  );
+}
+
+export function BloodFactDetailScreen({ navigation, route }: BloodFactDetailProps) {
+  const fact = getBloodFact(route.params.factId);
+
+  if (!fact) {
+    return (
+      <Screen>
+        <Header title="Blood Donation Facts" back={() => navigation.goBack()} />
+        <Message text="This facts category could not be found." tone="error" />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <Header title="Blood Donation Facts" subtitle={fact.title} back={() => navigation.goBack()} />
+      <View style={styles.factDetailCard}>
+        <Text style={styles.factDetailTitle}>{fact.sectionTitle}</Text>
+        {fact.items.map((item, index) => (
+          <FactContent key={`${fact.id}-${index}`} item={item} />
+        ))}
+      </View>
+      <Message text="Eligibility and deferral rules can vary by blood bank. Follow the screening decision of a qualified medical professional." />
+    </Screen>
+  );
+}
+
+export function SettingsScreen({ navigation }: SettingsProps) {
+  const { deleteProfile } = useAuth();
 
   function confirmDelete() {
     Alert.alert(
@@ -356,19 +607,12 @@ export function MyPageScreen({ navigation }: MyPageProps) {
     );
   }
 
-  async function logout() {
-    await signOut();
-  }
-
   return (
     <Screen>
-      <Header title="Blood Donor's My Page" back={() => navigation.goBack()} />
-      <View style={styles.menu}>
-        <PrimaryButton title="Edit Profile" onPress={() => navigation.navigate('EditProfile')} />
-        <PrimaryButton title="Change Password" onPress={() => navigation.navigate('ChangePassword')} />
-        <PrimaryButton title="Last Donation Details" onPress={() => navigation.navigate('LastDonation')} />
-        <PrimaryButton title="Delete Profile/Unsubscribe" tone="danger" onPress={confirmDelete} />
-        <PrimaryButton title="Logout" tone="neutral" onPress={logout} />
+      <Header title="Settings" back={() => navigation.goBack()} />
+      <View style={styles.settingsPanel}>
+        <Text style={styles.settingsTitle}>Account</Text>
+        <PrimaryButton title="Delete Profile" tone="danger" onPress={confirmDelete} />
       </View>
     </Screen>
   );
@@ -608,6 +852,119 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
   },
+  factBulletDot: {
+    backgroundColor: colors.text,
+    borderRadius: 4,
+    height: 7,
+    marginTop: 9,
+    width: 7,
+  },
+  factBulletRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  factBulletText: {
+    color: '#333333',
+    flex: 1,
+    flexShrink: 1,
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  factBullets: {
+    marginTop: 4,
+  },
+  factCategoryList: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  factCategoryNumber: {
+    alignItems: 'center',
+    backgroundColor: '#e0f7fc',
+    borderRadius: 16,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  factCategoryNumberText: {
+    color: colors.primaryDark,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  factCategoryRow: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderBottomColor: '#eceff3',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 72,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  factCategorySubtitle: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 3,
+  },
+  factCategoryText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  factCategoryTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 21,
+  },
+  factDetailCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 16,
+  },
+  factDetailTitle: {
+    color: colors.danger,
+    fontSize: 20,
+    fontWeight: '900',
+    lineHeight: 26,
+    marginBottom: 14,
+  },
+  factParagraph: {
+    color: '#333333',
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 14,
+  },
+  factParagraphStrong: {
+    color: colors.text,
+    fontWeight: '900',
+  },
+  factTable: {
+    borderColor: colors.danger,
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  factTableCell: {
+    color: '#333333',
+    flex: 1,
+    flexShrink: 1,
+    fontSize: 15,
+    lineHeight: 22,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  factTableRow: {
+    borderBottomColor: colors.danger,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+  },
   helper: {
     color: colors.muted,
     fontSize: 13,
@@ -639,16 +996,158 @@ const styles = StyleSheet.create({
   profileButton: {
     alignItems: 'center',
     borderColor: colors.border,
-    borderRadius: 18,
+    borderRadius: 22,
     borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  profileButtonPressed: {
+    opacity: 0.5,
+  },
+  profileAvatar: {
+    alignItems: 'center',
+    backgroundColor: '#e0f7fc',
+    borderColor: '#a5e5f2',
+    borderRadius: 36,
+    borderWidth: 1,
+    height: 72,
+    justifyContent: 'center',
+    width: 72,
+  },
+  profileAvatarCompact: {
+    alignItems: 'center',
+    height: 31,
+    justifyContent: 'center',
+    width: 31,
+  },
+  profileDetailLabel: {
+    color: colors.muted,
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  profileDetailRow: {
+    borderTopColor: '#eceff3',
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    paddingVertical: 11,
+  },
+  profileDetailValue: {
+    color: colors.text,
+    flex: 1,
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 19,
+    textAlign: 'right',
+  },
+  profileDetails: {
+    marginTop: 16,
+  },
+  profileEmail: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 3,
+  },
+  profileHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  profileIdentity: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileName: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 28,
+  },
+  profileOption: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderBottomColor: '#eceff3',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 58,
+    paddingHorizontal: 14,
+  },
+  profileOptionPressed: {
+    opacity: 0.55,
+  },
+  profileOptionText: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  profileOptions: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 16,
+    overflow: 'hidden',
+  },
+  profilePanel: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 16,
+  },
+  editProfileButton: {
+    alignItems: 'center',
+    backgroundColor: '#eef9fc',
+    borderColor: '#b9e8f1',
+    borderRadius: 22,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  logoutButton: {
+    alignItems: 'center',
+    backgroundColor: '#374151',
+    borderRadius: 10,
+    justifyContent: 'center',
+    marginTop: 18,
+    minHeight: 52,
+  },
+  logoutButtonPressed: {
+    opacity: 0.8,
+  },
+  logoutButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  optionIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.soft,
+    borderRadius: 18,
     height: 36,
     justifyContent: 'center',
-    paddingHorizontal: 10,
+    width: 36,
   },
-  profileIcon: {
-    color: colors.primaryDark,
-    fontSize: 12,
-    fontWeight: '800',
+  settingsPanel: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 16,
+  },
+  settingsTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 6,
   },
   row: {
     alignItems: 'center',

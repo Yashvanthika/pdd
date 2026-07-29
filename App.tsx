@@ -7,15 +7,18 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/mobile/AuthContext';
 import {
+  BloodFactDetailScreen,
+  BloodFactsScreen,
   ChangePasswordScreen,
   EditProfileScreen,
   ForgotPasswordScreen,
   LastDonationScreen,
   LoginScreen,
-  MyPageScreen,
+  MyProfileScreen,
   RegisterProfileScreen,
   ResultsScreen,
   SearchScreen,
+  SettingsScreen,
 } from './src/mobile/screens';
 import type { AppStackParamList, AuthStackParamList } from './src/mobile/navigation';
 import { colors } from './src/mobile/theme';
@@ -38,10 +41,13 @@ function DonorNavigator() {
     <DonorStack.Navigator screenOptions={{ headerShown: false }}>
       <DonorStack.Screen name="Search" component={SearchScreen} />
       <DonorStack.Screen name="Results" component={ResultsScreen} />
-      <DonorStack.Screen name="MyPage" component={MyPageScreen} />
+      <DonorStack.Screen name="MyProfile" component={MyProfileScreen} />
       <DonorStack.Screen name="EditProfile" component={EditProfileScreen} />
       <DonorStack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <DonorStack.Screen name="LastDonation" component={LastDonationScreen} />
+      <DonorStack.Screen name="Settings" component={SettingsScreen} />
+      <DonorStack.Screen name="BloodFacts" component={BloodFactsScreen} />
+      <DonorStack.Screen name="BloodFactDetail" component={BloodFactDetailScreen} />
     </DonorStack.Navigator>
   );
 }

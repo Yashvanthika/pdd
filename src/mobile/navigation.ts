@@ -12,8 +12,13 @@ export type AppStackParamList = {
     district: string;
     city: string;
   };
-  MyPage: undefined;
+  MyProfile: undefined;
   EditProfile: undefined;
   ChangePassword: undefined;
   LastDonation: undefined;
+  Settings: undefined;
+  BloodFacts: undefined;
+  BloodFactDetail: {
+    factId: string;
+  };
 };
