@@ -16,7 +16,7 @@ import { colors, spacing } from './theme';
 
 export function Screen({ children, scroll = true }: { children: React.ReactNode; scroll?: boolean }) {
   const insets = useSafeAreaInsets();
-  const topInset = insets.top > 0 ? insets.top + 24 : 44;
+  const topInset = Math.max(insets.top, 24);
   const bottomInset = Math.max(insets.bottom, 24);
 
   if (!scroll) {
@@ -28,10 +28,11 @@ export function Screen({ children, scroll = true }: { children: React.ReactNode;
   }
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: topInset }]}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + 20, paddingTop: topInset + 20 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + spacing.screen }]}
+        contentInsetAdjustmentBehavior="never"
         keyboardShouldPersistTaps="handled"
       >
         {children}
@@ -151,7 +152,7 @@ export function CheckboxRow({ label, value, onValueChange }: {
   return (
     <Pressable onPress={() => onValueChange(!value)} style={styles.checkboxRow}>
       <View style={[styles.checkbox, value && styles.checkboxChecked]}>
-        {value ? <Text style={styles.checkboxMark}>OK</Text> : null}
+        {value ? <Text style={styles.checkboxMark}>✓</Text> : null}
       </View>
       <Text style={styles.checkboxText}>{label}</Text>
     </Pressable>
@@ -347,13 +348,14 @@ const styles = StyleSheet.create({
     width: 28,
   },
   checkboxChecked: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: colors.success,
+    borderColor: colors.success,
   },
   checkboxMark: {
     color: '#fff',
-    fontSize: 9,
+    fontSize: 18,
     fontWeight: '900',
+    lineHeight: 22,
   },
   checkboxText: {
     color: colors.text,

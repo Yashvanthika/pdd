@@ -26,6 +26,7 @@ Mobile environment variables:
 EXPO_PUBLIC_SUPABASE_URL=""
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=""
 EXPO_PUBLIC_API_BASE_URL="http://localhost:3000"
+EXPO_PUBLIC_API_TIMEOUT_MS="15000"
 ```
 
 ## Local Development
@@ -73,7 +74,7 @@ Recommended Dokploy settings:
 4. Set Docker Context Path to `.`.
 5. Expose container port `3000`.
 6. Add a domain in Dokploy Domains.
-7. Use `/api/health` as the health check URL.
+7. Use `/api/live` as the Dokploy health check URL.
 
 Add these runtime variables in the Dokploy application Environment tab:
 
@@ -95,8 +96,11 @@ EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
 EXPO_PUBLIC_API_BASE_URL=https://your-dokploy-domain.example
 ```
 
+Use `/api/live` for container liveness and `/api/health` when you want to verify that Supabase credentials and the `donor_profiles` table are ready.
+
 ## API Surface
 
+- `GET /api/live`
 - `GET /api/health`
 - `GET /api/locations`
 - `POST /api/auth/register-donor`

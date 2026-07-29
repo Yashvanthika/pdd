@@ -88,6 +88,7 @@ export function LoginScreen({ navigation }: LoginProps) {
 }
 
 export function RegisterProfileScreen({ navigation }: RegisterProfileProps) {
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -166,10 +167,11 @@ export function RegisterProfileScreen({ navigation }: RegisterProfileProps) {
         }),
       });
 
-      Alert.alert('Registration complete', 'Your donor account is ready. Please sign in.');
-      navigation.popToTop();
+      await signIn(normalizedEmail, password);
     } catch (err: any) {
-      setError(err.message || 'Unable to register donor.');
+      const message = err.message || 'Unable to register donor.';
+      setError(message);
+      Alert.alert('Registration failed', message);
     } finally {
       setSubmitting(false);
     }

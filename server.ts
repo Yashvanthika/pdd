@@ -42,6 +42,63 @@ const donorProfileHealthColumns = [
   'updated_at',
 ].join(',');
 
+type LogMeta = Record<string, string | number | boolean | null | undefined>;
+
+function log(level: 'info' | 'warn' | 'error', message: string, meta: LogMeta = {}) {
+  const payload = Object.fromEntries(
+    Object.entries(meta).filter((entry) => entry[1] !== undefined),
+  );
+  const line = JSON.stringify({
+    level,
+    time: new Date().toISOString(),
+    message,
+    ...payload,
+  });
+
+  if (level === 'error') {
+    console.error(line);
+    return;
+  }
+
+  if (level === 'warn') {
+    console.warn(line);
+    return;
+  }
+
+  console.log(line);
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+app.disable('x-powered-by');
+
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+
+  res.on('finish', () => {
+    const status = res.statusCode;
+    log(status >= 500 ? 'error' : 'info', 'request_completed', {
+      method: req.method,
+      path: req.originalUrl,
+      status,
+      durationMs: Date.now() - startedAt,
+    });
+  });
+
+  next();
+});
+
+process.on('unhandledRejection', (reason) => {
+  log('error', 'unhandled_rejection', { error: getErrorMessage(reason) });
+});
+
+process.on('uncaughtException', (error) => {
+  log('error', 'uncaught_exception', { error: getErrorMessage(error) });
+  process.exit(1);
+});
+
 function getAllowedCorsOrigin(origin: string | undefined): string | null {
   if (!origin || CORS_ORIGINS.length === 0) return null;
   if (CORS_ORIGINS.includes('*')) return '*';
@@ -85,6 +142,13 @@ function getSupabaseAdmin(): SupabaseClient {
 function isMissingSchemaError(error: any): boolean {
   const message = String(error?.message || '');
   return error?.code === 'PGRST205' || message.includes('Could not find the table') || message.includes('schema cache');
+}
+
+async function checkDonorProfilesTable() {
+  return getSupabaseAdmin()
+    .from('donor_profiles')
+    .select(donorProfileHealthColumns)
+    .limit(1);
 }
 
 function sendMissingSchema(res: express.Response) {
@@ -175,15 +239,21 @@ function mapProfile(row: any) {
   };
 }
 
+app.get('/api/live', (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'bloodlink-donor-directory',
+    environment: process.env.NODE_ENV || 'development',
+    time: new Date().toISOString(),
+  });
+});
+
 app.get('/api/health', async (_req, res) => {
   let donorProfilesTableReady = false;
   let databaseMessage = isSupabaseConfigured ? 'not checked' : 'Supabase backend credentials are not configured.';
 
   if (isSupabaseConfigured) {
-    const { error } = await getSupabaseAdmin()
-      .from('donor_profiles')
-      .select(donorProfileHealthColumns)
-      .limit(1);
+    const { error } = await checkDonorProfilesTable();
 
     donorProfilesTableReady = !error;
     databaseMessage = error ? error.message : 'ready';
@@ -241,6 +311,18 @@ app.post('/api/auth/register-donor', async (req, res) => {
       return;
     }
 
+    const { error: schemaError } = await checkDonorProfilesTable();
+    if (schemaError) {
+      log('error', 'register_donor_database_not_ready', { error: schemaError.message });
+      if (isMissingSchemaError(schemaError)) {
+        sendMissingSchema(res);
+        return;
+      }
+
+      res.status(503).json({ error: `Database is not ready: ${schemaError.message}` });
+      return;
+    }
+
     const supabase = getSupabaseAdmin();
     const { data: createdUser, error: createError } = await supabase.auth.admin.createUser({
       email,
@@ -253,6 +335,7 @@ app.post('/api/auth/register-donor', async (req, res) => {
     });
 
     if (createError || !createdUser.user) {
+      log('warn', 'register_donor_auth_create_failed', { error: createError?.message || 'Missing created user.' });
       res.status(400).json({ error: createError?.message || 'Unable to create donor account.' });
       return;
     }
@@ -279,16 +362,26 @@ app.post('/api/auth/register-donor', async (req, res) => {
     if (profileError) {
       await supabase.auth.admin.deleteUser(createdUser.user.id);
       if (isMissingSchemaError(profileError)) {
+        log('error', 'register_donor_schema_missing', { error: profileError.message });
         sendMissingSchema(res);
         return;
       }
 
+      log('warn', 'register_donor_profile_insert_failed', { error: profileError.message });
       res.status(400).json({ error: profileError.message });
       return;
     }
 
+    log('info', 'register_donor_completed', {
+      donorId: createdUser.user.id,
+      bloodGroup,
+      state,
+      district,
+      city,
+    });
     res.status(201).json({ profile: mapProfile(profile) });
   } catch (error: any) {
+    log('error', 'register_donor_failed', { error: error.message || 'Unable to register donor.' });
     res.status(500).json({ error: error.message || 'Unable to register donor.' });
   }
 });
@@ -539,6 +632,22 @@ app.use((_req, res) => {
   res.status(404).json({ error: 'Route not found.' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[BloodLink Server] Listening on http://0.0.0.0:${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  log('info', 'server_started', {
+    url: `http://0.0.0.0:${PORT}`,
+    environment: process.env.NODE_ENV || 'development',
+    supabaseConfigured: isSupabaseConfigured,
+    corsOrigins: CORS_ORIGINS.length,
+  });
 });
+
+function shutdown(signal: string) {
+  log('info', 'shutdown_signal_received', { signal });
+  server.close(() => {
+    log('info', 'server_stopped', { signal });
+    process.exit(0);
+  });
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
