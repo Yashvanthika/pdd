@@ -1,6 +1,23 @@
 import { expect } from 'chai';
 import { appiumConfig } from '../../config/appium.config.js';
-import { expectVisibleByAccessibilityId, expectVisibleByText, textXPath, waitForAnyText } from '../../utilities/appium/waitUtils.js';
+import { expectVisibleByText, textXPath, waitForAnyText } from '../../utilities/appium/waitUtils.js';
+
+function xpathLiteral(value) {
+  const text = String(value);
+  if (!text.includes("'")) return `'${text}'`;
+  if (!text.includes('"')) return `"${text}"`;
+  return `concat('${text.replace(/'/g, "', \"'\", '")}')`;
+}
+
+const inputHints = {
+  'Donation Date': ['YYYY-MM-DD'],
+  Email: ['name@example.com'],
+  'Facility / Organization': ['Facility name'],
+  'Mobile Number': ['10 digit mobile number'],
+  Password: ['Password', 'Minimum 8 characters'],
+  'Registered email ID': ['name@example.com'],
+  'Retype Password': ['Retype password'],
+};
 
 export class BasePage {
   constructor(driver) {
@@ -35,7 +52,7 @@ export class BasePage {
   }
 
   async type(label, value, timeoutMs = appiumConfig.waitTimeoutMs) {
-    const element = await this.byAccessibilityId(label, timeoutMs);
+    const element = await this.inputByLabel(label, timeoutMs);
     await this.driver.setValue(element, value);
     await this.driver.hideKeyboard();
     return element;
@@ -46,7 +63,9 @@ export class BasePage {
   }
 
   async expectA11y(label, timeoutMs = appiumConfig.waitTimeoutMs) {
-    return expectVisibleByAccessibilityId(this.driver, label, timeoutMs);
+    const element = await this.byAccessibilityId(label, timeoutMs);
+    expect(await this.driver.isDisplayed(element)).to.equal(true);
+    return element;
   }
 
   async expectAnyText(labels, timeoutMs = appiumConfig.waitTimeoutMs) {
@@ -67,13 +86,44 @@ export class BasePage {
     await this.tap(optionLabel);
   }
 
+  async inputByLabel(label, timeoutMs = appiumConfig.waitTimeoutMs) {
+    const literal = xpathLiteral(label);
+    const locators = [
+      ['accessibility id', label],
+      ['xpath', `//android.widget.TextView[@text=${literal}]/following-sibling::android.widget.EditText[1]`],
+      ['xpath', `//android.widget.EditText[@hint=${literal} or @text=${literal} or @content-desc=${literal}]`],
+      ...(inputHints[label] || []).map((hint) => {
+        const hintLiteral = xpathLiteral(hint);
+        return ['xpath', `//android.widget.EditText[@hint=${hintLiteral} or @text=${hintLiteral}]`];
+      }),
+    ];
+
+    let lastError;
+    for (const [using, value] of locators) {
+      try {
+        return await this.driver.findElement(using, value, timeoutMs);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError || new Error(`Input not found for label ${label}`);
+  }
+
   async resetToLogin() {
     await this.driver.activateApp();
+    let source = await this.source();
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const source = await this.source();
-      if (source.includes('BloodLink') && source.includes('Sign In')) return;
-      await this.driver.back();
+    if (source.includes('BloodLink') && source.includes('Sign In')) {
+      return;
+    }
+
+    await this.driver.terminateApp();
+    await this.driver.activateApp();
+    source = await this.source();
+
+    if (!source.includes('BloodLink') || !source.includes('Sign In')) {
+      throw new Error('BloodLink did not open to the login screen after app restart.');
     }
   }
 }

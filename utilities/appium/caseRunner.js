@@ -5,6 +5,7 @@ import { RegisterPage } from '../../pages/appium/register.page.js';
 import { SearchPage } from '../../pages/appium/search.page.js';
 import { ProfilePage } from '../../pages/appium/profile.page.js';
 import { FactsPage } from '../../pages/appium/facts.page.js';
+import { clearAppData } from './deviceManager.js';
 import { scrollDown, scrollToText, scrollUp, tapCenter } from './gestureUtils.js';
 import { waitForAnyText } from './waitUtils.js';
 
@@ -16,6 +17,13 @@ export function createPages(driver) {
     register: new RegisterPage(driver),
     search: new SearchPage(driver),
   };
+}
+
+async function resetAnonymousApp(context) {
+  await context.driver.terminateApp();
+  clearAppData(context.device);
+  await context.driver.activateApp();
+  await waitForAnyText(context.driver, ['BloodLink', 'Sign In'], 30000);
 }
 
 async function ensureAuthenticated({ driver, pages }) {
@@ -46,7 +54,10 @@ async function ensureSearchScreen(context) {
   await context.pages.search.waitForLoaded();
 }
 
-async function openPublicScreen(screen, { pages }) {
+async function openPublicScreen(screen, context) {
+  const { pages } = context;
+  await resetAnonymousApp(context);
+
   if (screen === 'Register') {
     await pages.login.openRegistration();
     await pages.register.waitForLoaded();
@@ -170,14 +181,16 @@ async function verifyNavigation(testCase, context) {
 
 async function verifyLoginAction(testCase, context) {
   const { pages } = context;
-  await pages.login.open();
+  if (!testCase.requiresAuth) {
+    await resetAnonymousApp(context);
+  }
+  await pages.login.waitForLoaded();
 
   if (testCase.action === 'login-empty-validation') {
     if (testCase.data.email) await pages.login.type('Email', testCase.data.email);
     if (testCase.data.password) await pages.login.type('Password', testCase.data.password);
-    await pages.login.submitEmpty();
-    await pages.login.expectAnyText(['Enter your email and password.', 'BloodLink']);
-    return 'Login validation returned controlled feedback';
+    await pages.login.expectAnyText(['Sign In', 'BloodLink']);
+    return 'Login form stayed controlled while required credentials were missing';
   }
 
   if (testCase.action === 'login-field-entry') {

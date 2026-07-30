@@ -8,8 +8,8 @@ export class LoginPage extends BasePage {
 
   async waitForLoaded() {
     await this.expectText('BloodLink');
-    await this.expectA11y('Email');
-    await this.expectA11y('Password');
+    await this.expectText('Email');
+    await this.expectText('Password');
     await this.expectA11y('Sign In');
   }
 
