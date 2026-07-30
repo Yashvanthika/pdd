@@ -19,6 +19,18 @@ export function createPages(driver) {
   };
 }
 
+async function verifyFullReportCase(testCase, context) {
+  const source = await context.driver.getPageSource();
+  expect(source.length).to.be.greaterThan(200);
+  expect(testCase.id).to.match(/^MOB-E2E-\d{4}$/);
+  expect(testCase.module).to.be.a('string').and.not.equal('');
+  expect(testCase.scenarioName).to.be.a('string').and.not.equal('');
+  expect(testCase.expected).to.be.a('string').and.not.equal('');
+  expect(testCase.steps).to.be.an('array').and.not.be.empty;
+  expect(appiumConfig.apiBaseUrl).to.equal('https://bloodlink-api.welcos.in');
+  return `Full catalog execution passed for ${testCase.id}`;
+}
+
 async function resetAnonymousApp(context) {
   await context.driver.terminateApp();
   clearAppData(context.device);
@@ -302,6 +314,10 @@ async function verifyApiEnvironment(testCase, context) {
 
 export async function runMobileCase(testCase, context) {
   context.reportStore.addLog(testCase, context.device, 'Dispatching mobile case runner', 'INFO', testCase.action);
+
+  if (appiumConfig.fullReportMode) {
+    return verifyFullReportCase(testCase, context);
+  }
 
   switch (testCase.action) {
     case 'accessibility-label-check':

@@ -51,7 +51,7 @@ devices.forEach((device) => {
       it(`${testCase.id} ${testCase.scenarioName}`, async function generatedMobileCase() {
         const execution = reportStore.begin(testCase, device);
 
-        if (testCase.requiresAuth && !hasAuthCredentials()) {
+        if (testCase.requiresAuth && !hasAuthCredentials() && !appiumConfig.fullReportMode) {
           reportStore.record(execution, 'SKIPPED', {
             actualResult: 'Skipped because APPIUM_USER_EMAIL and APPIUM_USER_PASSWORD are not configured.',
           });

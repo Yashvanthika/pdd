@@ -35,6 +35,9 @@ function safeSuffix(value) {
 const reportSuffix = safeSuffix(process.env.APPIUM_REPORT_SUFFIX);
 const reportPostfix = reportSuffix ? `-${reportSuffix}` : '';
 const defaultApkPath = path.join(rootDir, 'BloodLink-arm64-release.apk');
+const requestedExcelReportName = process.env.APPIUM_REPORT_NAME
+  ? (process.env.APPIUM_REPORT_NAME.endsWith('.xlsx') ? process.env.APPIUM_REPORT_NAME : `${process.env.APPIUM_REPORT_NAME}.xlsx`)
+  : '';
 
 export const appiumConfig = {
   apiBaseUrl: (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://bloodlink-api.welcos.in').replace(/\/+$/, ''),
@@ -46,7 +49,7 @@ export const appiumConfig = {
   },
   artifacts: {
     excelDir: path.join(rootDir, 'excel'),
-    excelFile: path.join(rootDir, 'excel', `Mobile_E2E_Report${reportPostfix}.xlsx`),
+    excelFile: path.join(rootDir, 'excel', requestedExcelReportName || `Mobile_E2E_Report${reportPostfix}.xlsx`),
     failuresDir: path.join(rootDir, 'reports', 'appium', 'failures'),
     logsDir: path.join(rootDir, 'logs'),
     mochawesomeDir: path.join(rootDir, 'reports', 'appium', 'mochawesome'),
@@ -60,8 +63,9 @@ export const appiumConfig = {
   },
   caseFilter: process.env.APPIUM_CASE_FILTER || '',
   environment: process.env.TEST_ENV || process.env.NODE_ENV || 'local',
+  fullReportMode: asBoolean(process.env.APPIUM_FULL_REPORT_MODE, false),
   maxCases: asNumber(process.env.APPIUM_MAX_CASES, 0),
-  minTestCases: asNumber(process.env.APPIUM_MIN_TEST_CASES, 340),
+  minTestCases: asNumber(process.env.APPIUM_MIN_TEST_CASES, 384),
   parallelDevices: asBoolean(process.env.APPIUM_PARALLEL_DEVICES, false),
   retries: asNumber(process.env.APPIUM_RETRIES, 1),
   rootDir,
