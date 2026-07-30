@@ -12,6 +12,8 @@ on:
         default: ""
         required: false
   push:
+    branches:
+      - main
     paths:
       - "App.tsx"
       - "src/mobile/**"
@@ -38,6 +40,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   android-appium:
@@ -123,6 +129,13 @@ jobs:
             export APPIUM_PLATFORM_VERSION="$(adb shell getprop ro.build.version.release | tr -d '\r')"
             APPIUM_APK_PATH="$PWD/android/app/build/outputs/apk/release/app-release.apk" pnpm run appium:test
 
+      - name: Publish report summary
+        if: always()
+        run: |
+          echo "### Appium Test report" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Excel artifact: appium-testing-report-api-${{ matrix.api-level }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Workbook: excel/appium testing.xlsx" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Appium artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -133,4 +146,4 @@ jobs:
             logs/
             reports/appium/
             screenshots/appium/
-          if-no-files-found: warn
+          if-no-files-found: error

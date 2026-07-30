@@ -12,6 +12,8 @@ on:
         default: ""
         required: false
   push:
+    branches:
+      - main
     paths:
       - "web/**"
       - "tests/selenium/**"
@@ -36,6 +38,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   selenium-e2e:
@@ -68,7 +74,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
       - name: Enable pnpm
         run: |
@@ -103,6 +108,13 @@ jobs:
         if: always()
         run: pnpm run selenium:report
 
+      - name: Publish report summary
+        if: always()
+        run: |
+          echo "### Selenium Test report" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Excel artifact: selenium-testing-report" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Workbook: excel/selenium testing.xlsx" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Selenium artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -116,4 +128,4 @@ jobs:
             reports/selenium-results*.json
             screenshots/
             web-server.log
-          if-no-files-found: warn
+          if-no-files-found: error
