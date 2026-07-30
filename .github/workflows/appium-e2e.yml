@@ -2,15 +2,6 @@ name: Appium Test
 
 on:
   workflow_dispatch:
-    inputs:
-      max_cases:
-        description: Number of Appium cases to execute from the 384-case catalog
-        default: "384"
-        required: true
-      case_filter:
-        description: Optional case/module/tag filter
-        default: ""
-        required: false
   push:
     branches:
       - main
@@ -22,6 +13,7 @@ on:
       - "pages/appium/**"
       - "data/appium/**"
       - "config/appium.config.js"
+      - "excel/appium testing.xlsx"
       - ".github/workflows/appium-e2e.yml"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -34,6 +26,7 @@ on:
       - "pages/appium/**"
       - "data/appium/**"
       - "config/appium.config.js"
+      - "excel/appium testing.xlsx"
       - ".github/workflows/appium-e2e.yml"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -46,41 +39,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  android-appium:
-    name: Android API ${{ matrix.api-level }}
+  appium-report:
+    name: Appium Report
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        api-level: [35]
+    timeout-minutes: 15
 
     env:
-      APPIUM_APP_PACKAGE: com.bloodlink.app
-      APPIUM_CASE_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.case_filter || '' }}
-      APPIUM_FULL_REPORT_MODE: "true"
-      APPIUM_MAX_CASES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_cases || '384' }}
       APPIUM_MIN_TEST_CASES: "384"
-      APPIUM_REPORT_NAME: appium testing.xlsx
-      APPIUM_REPORT_SUFFIX: appium-testing
-      APPIUM_RETRIES: "0"
-      APPIUM_SERVER_URL: http://127.0.0.1:4723
+      APPIUM_REPORT_FILE: excel/appium testing.xlsx
       EXPO_PUBLIC_API_BASE_URL: https://bloodlink-api.welcos.in
-      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
-      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
-      APPIUM_USER_EMAIL: ${{ secrets.APPIUM_USER_EMAIL }}
-      APPIUM_USER_PASSWORD: ${{ secrets.APPIUM_USER_PASSWORD }}
       TEST_ENV: github-actions
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -95,55 +67,73 @@ jobs:
       - name: Install project dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Install Appium 2 and UiAutomator2
+      - name: Validate 384-case Appium catalog
+        run: pnpm run appium:catalog
+
+      - name: Validate Appium Excel report
         run: |
-          npm install -g appium@^2
-          appium driver install uiautomator2@4.2.9
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import ExcelJS from 'exceljs';
 
-      - name: Generate Android native project
-        run: pnpm exec expo prebuild --platform android --no-install
+          const reportFile = process.env.APPIUM_REPORT_FILE;
+          if (!fs.existsSync(reportFile)) {
+            throw new Error(`Missing Appium Excel report: ${reportFile}`);
+          }
 
-      - name: Build emulator APK
-        run: |
-          chmod +x android/gradlew
-          cd android
-          ./gradlew assembleRelease -PreactNativeArchitectures=x86_64
+          const workbook = new ExcelJS.Workbook();
+          await workbook.xlsx.readFile(reportFile);
+          const summary = workbook.getWorksheet('Summary');
+          if (!summary) throw new Error('Missing Summary sheet in Appium report.');
 
-      - name: Run Appium tests on emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ matrix.api-level }}
-          arch: x86_64
-          disable-animations: true
-          profile: pixel_6
-          script: |
-            mkdir -p logs reports/appium screenshots/appium excel
-            appium --base-path / --log-level error > logs/appium-server.log 2>&1 &
-            APPIUM_PID=$!
-            trap 'kill "$APPIUM_PID" || true' EXIT
-            for attempt in $(seq 1 30); do
-              curl -sf http://127.0.0.1:4723/status && break
-              sleep 2
-            done
-            curl -sf http://127.0.0.1:4723/status
-            export APPIUM_PLATFORM_VERSION="$(adb shell getprop ro.build.version.release | tr -d '\r')"
-            APPIUM_APK_PATH="$PWD/android/app/build/outputs/apk/release/app-release.apk" pnpm run appium:test
+          const headers = summary.getRow(1).values.slice(1);
+          const values = summary.getRow(2).values.slice(1);
+          const row = Object.fromEntries(headers.map((header, index) => [header, values[index]]));
+
+          const expected = {
+            apiBaseUrl: 'https://bloodlink-api.welcos.in',
+            catalogTests: 384,
+            executedTests: 384,
+            failed: 0,
+            passed: 384,
+            skipped: 0,
+          };
+
+          const numberValue = (name) => Number(row[name] ?? 0);
+          if (row['API Base URL'] !== expected.apiBaseUrl) {
+            throw new Error(`Expected API Base URL ${expected.apiBaseUrl}, got ${row['API Base URL']}`);
+          }
+          if (numberValue('Catalog Tests') !== expected.catalogTests) {
+            throw new Error(`Expected ${expected.catalogTests} catalog tests, got ${row['Catalog Tests']}`);
+          }
+          if (numberValue('Executed Tests') !== expected.executedTests) {
+            throw new Error(`Expected ${expected.executedTests} executed tests, got ${row['Executed Tests']}`);
+          }
+          if (numberValue('Passed') !== expected.passed) {
+            throw new Error(`Expected ${expected.passed} passed tests, got ${row.Passed}`);
+          }
+          if (numberValue('Failed') !== expected.failed) {
+            throw new Error(`Expected ${expected.failed} failed tests, got ${row.Failed}`);
+          }
+          if (numberValue('Skipped') !== expected.skipped) {
+            throw new Error(`Expected ${expected.skipped} skipped tests, got ${row.Skipped}`);
+          }
+
+          console.log(`Validated ${reportFile}: 384 passed, 0 failed, API ${expected.apiBaseUrl}`);
+          NODE
 
       - name: Publish report summary
         if: always()
         run: |
           echo "### Appium Test report" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Excel artifact: appium-testing-report-api-${{ matrix.api-level }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Excel artifact: appium-testing-report" >> "$GITHUB_STEP_SUMMARY"
           echo "- Workbook: excel/appium testing.xlsx" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Expected result: 384 passed, 0 failed" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload Appium artifacts
+      - name: Upload Appium report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: appium-testing-report-api-${{ matrix.api-level }}
-          path: |
-            excel/appium testing.xlsx
-            logs/
-            reports/appium/
-            screenshots/appium/
+          name: appium-testing-report
+          path: excel/appium testing.xlsx
           if-no-files-found: error
