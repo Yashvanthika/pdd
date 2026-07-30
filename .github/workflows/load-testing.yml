@@ -1,0 +1,128 @@
+name: Load Testing
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Target API base URL. Leave empty to test the workflow's local server.
+        default: ""
+        required: false
+      max_cases:
+        description: Number of unique load cases to execute from the generated catalog.
+        default: "360"
+        required: true
+      concurrency:
+        description: Number of concurrent requests.
+        default: "25"
+        required: true
+      rounds:
+        description: Number of times to replay the selected unique cases.
+        default: "1"
+        required: true
+      case_filter:
+        description: Optional case/module/tag filter.
+        default: ""
+        required: false
+  push:
+    paths:
+      - "server.ts"
+      - "src/data/**"
+      - "src/mobile/bloodGroups.ts"
+      - "config/load.config.js"
+      - "utilities/load/**"
+      - "scripts/load/**"
+      - ".github/workflows/load-testing.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  pull_request:
+    paths:
+      - "server.ts"
+      - "src/data/**"
+      - "src/mobile/bloodGroups.ts"
+      - "config/load.config.js"
+      - "utilities/load/**"
+      - "scripts/load/**"
+      - ".github/workflows/load-testing.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  api-load-test:
+    name: API load test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      CORS_ORIGINS: http://127.0.0.1:3000
+      LOAD_TEST_AUTH_TOKEN: ${{ secrets.LOAD_TEST_AUTH_TOKEN }}
+      LOAD_TEST_BASE_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.base_url || 'http://127.0.0.1:3000' }}
+      LOAD_TEST_CASE_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.case_filter || '' }}
+      LOAD_TEST_CONCURRENCY: ${{ github.event_name == 'workflow_dispatch' && inputs.concurrency || '25' }}
+      LOAD_TEST_MAX_CASES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_cases || '360' }}
+      LOAD_TEST_MIN_TEST_CASES: "320"
+      LOAD_TEST_REPORT_NAME: Load_Testing_Report.xlsx
+      LOAD_TEST_REQUEST_TIMEOUT_MS: "10000"
+      LOAD_TEST_ROUNDS: ${{ github.event_name == 'workflow_dispatch' && inputs.rounds || '1' }}
+      NODE_ENV: test
+      PORT: "3000"
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      TEST_ENV: github-actions
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build backend server
+        run: pnpm run build:server
+
+      - name: Start local backend
+        if: env.LOAD_TEST_BASE_URL == 'http://127.0.0.1:3000'
+        run: |
+          pnpm start > load-server.log 2>&1 &
+          for i in {1..60}; do
+            if curl --silent --fail http://127.0.0.1:3000/api/live > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat load-server.log
+          exit 1
+
+      - name: Validate generated load catalog
+        run: pnpm run load:catalog
+
+      - name: Run 300+ unique load cases
+        run: pnpm run load:test
+
+      - name: Generate load Excel report
+        if: always()
+        run: pnpm run load:report
+
+      - name: Upload load testing artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-testing-report
+          path: |
+            excel/Load_Testing_Report.xlsx
+            logs/load-test.log
+            reports/load-results.json
+            load-server.log
+          if-no-files-found: warn

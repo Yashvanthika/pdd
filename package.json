@@ -11,11 +11,27 @@
     "seed:test-donors": "tsx scripts/seedTestDonors.ts",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "web:dev": "pnpm --dir web dev",
+    "web:build": "pnpm --dir web build",
+    "web:start": "pnpm --dir web start",
     "build": "pnpm run build:server",
     "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "selenium:catalog": "node scripts/selenium/list-test-cases.js",
+    "selenium:report": "node scripts/selenium/generate-excel-report.js",
+    "selenium:test": "mocha --config .mocharc.selenium.cjs",
+    "selenium:test:headed": "E2E_HEADLESS=false pnpm run selenium:test",
+    "load:catalog": "tsx scripts/load/list-test-cases.js",
+    "load:report": "tsx scripts/load/generate-excel-report.js",
+    "load:test": "tsx scripts/load/run-load-test.js",
+    "appium:catalog": "node scripts/appium/list-test-cases.js",
+    "appium:report": "node scripts/appium/generate-excel-report.js",
+    "appium:server": "appium --base-path /",
+    "appium:test": "mocha --config .mocharc.appium.cjs",
+    "appium:test:parallel": "node scripts/appium/run-parallel-devices.js",
+    "appium:test:smoke": "APPIUM_SMOKE_ONLY=true APPIUM_MAX_CASES=25 mocha --config .mocharc.appium.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
@@ -38,8 +54,15 @@
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.17",
+    "babel-preset-expo": "57.0.4",
+    "chai": "^5.1.2",
     "esbuild": "^0.25.0",
+    "exceljs": "^4.4.0",
+    "mocha": "^11.0.0",
+    "mochawesome": "^7.1.3",
+    "selenium-webdriver": "^4.27.0",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "winston": "^3.17.0"
   }
 }
