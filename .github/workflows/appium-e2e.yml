@@ -1,0 +1,118 @@
+name: BloodLink Appium E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_cases:
+        description: Number of Appium cases to execute from the 300+ catalog
+        default: "340"
+        required: true
+      case_filter:
+        description: Optional case/module/tag filter
+        default: ""
+        required: false
+  pull_request:
+    paths:
+      - "App.tsx"
+      - "src/mobile/**"
+      - "tests/appium/**"
+      - "utilities/appium/**"
+      - "pages/appium/**"
+      - "data/appium/**"
+      - "config/appium.config.js"
+      - ".github/workflows/appium-e2e.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  android-appium:
+    name: Android API ${{ matrix.api-level }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [29, 35]
+
+    env:
+      APPIUM_APP_PACKAGE: com.bloodlink.app
+      APPIUM_CASE_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.case_filter || '' }}
+      APPIUM_MAX_CASES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_cases || '80' }}
+      APPIUM_SERVER_URL: http://127.0.0.1:4723
+      EXPO_PUBLIC_API_BASE_URL: https://bloodlink-api.welcos.in
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+      APPIUM_USER_EMAIL: ${{ secrets.APPIUM_USER_EMAIL }}
+      APPIUM_USER_PASSWORD: ${{ secrets.APPIUM_USER_PASSWORD }}
+      TEST_ENV: github-actions
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Appium 2 and UiAutomator2
+        run: |
+          npm install -g appium@^2
+          appium driver install uiautomator2@4.2.9
+
+      - name: Generate Android native project
+        run: pnpm exec expo prebuild --platform android --no-install
+
+      - name: Build emulator APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleRelease -PreactNativeArchitectures=x86_64
+
+      - name: Run Appium tests on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          disable-animations: true
+          profile: pixel_6
+          script: |
+            mkdir -p logs reports/appium screenshots/appium excel
+            appium --base-path / --log-level error > logs/appium-server.log 2>&1 &
+            APPIUM_PID=$!
+            trap 'kill "$APPIUM_PID" || true' EXIT
+            for attempt in $(seq 1 30); do
+              curl -sf http://127.0.0.1:4723/status && break
+              sleep 2
+            done
+            curl -sf http://127.0.0.1:4723/status
+            export APPIUM_PLATFORM_VERSION="$(adb shell getprop ro.build.version.release | tr -d '\r')"
+            APPIUM_APK_PATH="$PWD/android/app/build/outputs/apk/release/app-release.apk" pnpm run appium:test
+
+      - name: Upload Appium artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appium-e2e-api-${{ matrix.api-level }}
+          path: |
+            excel/
+            logs/
+            reports/appium/
+            screenshots/appium/

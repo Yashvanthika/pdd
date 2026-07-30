@@ -1,4 +1,5 @@
 node_modules/
+.next/
 .pnpm-store/
 .expo/
 android/
@@ -6,6 +7,12 @@ ios/
 build/
 dist/
 coverage/
+excel/
+logs/
+mochawesome-report/
+reports/
+screenshots/
+*.apk
 .DS_Store
 *.log
 .env*

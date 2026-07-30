@@ -116,3 +116,82 @@ Use `/api/live` for container liveness and `/api/health` when you want to verify
 - `PUT /api/me/last-donation`
 - `DELETE /api/me`
 - `GET /api/donors/search?bloodGroup=&state=&district=&city=`
+
+
+## Appium Android E2E Testing
+
+This repository also includes an Appium 2.x + UiAutomator2 mobile automation framework for the BloodLink Android APK. The catalog generates at least 340 Android cases for authentication, registration validation, donor search, navigation, gestures, diagnostics, accessibility, production API configuration, and authenticated profile workflows.
+
+Framework locations:
+
+- `tests/appium/` - generated Mocha E2E execution suite
+- `pages/appium/` - mobile Page Object Model classes
+- `utilities/appium/` - Appium driver client, ADB device discovery, gestures, failure capture, logging, report store, catalog builder, Excel report generation
+- `config/appium.config.js` - APK, package, Appium server, device, timeout, retry, credential, and artifact settings
+- `data/appium/` - BloodLink mobile test data
+- `.github/workflows/appium-e2e.yml` - Android emulator workflow for Appium E2E artifacts
+
+Install Appium once on your Mac:
+
+```bash
+npm install -g appium@^2
+appium driver install uiautomator2@4.2.9
+```
+
+If you are using the local portable Android toolchain created for the APK build:
+
+```bash
+export TOOLCHAIN=/private/tmp/bloodlink-android-toolchain
+export JAVA_HOME="$TOOLCHAIN/jdk/jdk-17.0.19+10/Contents/Home"
+export ANDROID_HOME="$TOOLCHAIN/android-sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+```
+
+Connect your Android phone by USB, enable USB debugging, accept the trust prompt, and verify:
+
+```bash
+adb devices -l
+```
+
+Start Appium in one terminal:
+
+```bash
+pnpm run appium:server
+```
+
+Run a quick smoke test in another terminal:
+
+```bash
+APPIUM_UDID=RZCX113G5ZD \
+APPIUM_APK_PATH=/Users/guest1/Documents/pdd/BloodLink-arm64-release.apk \
+pnpm run appium:test:smoke
+```
+
+Run the full 300+ catalog:
+
+```bash
+APPIUM_UDID=RZCX113G5ZD \
+APPIUM_APK_PATH=/Users/guest1/Documents/pdd/BloodLink-arm64-release.apk \
+APPIUM_MAX_CASES=340 \
+pnpm run appium:test
+```
+
+Optional authenticated workflow coverage:
+
+```bash
+APPIUM_USER_EMAIL=test.donor.0001@bloodlink.test
+APPIUM_USER_PASSWORD=BloodLinkTest#2026
+```
+
+Without credentials, authenticated-only mobile cases are recorded as skipped in the Excel report. The app is configured for `https://bloodlink-api.welcos.in` by default.
+
+Generated Appium artifacts:
+
+- `excel/Mobile_E2E_Report.xlsx`
+- `Summary`, `Test Cases`, `Failed Tests`, and `Execution Logs` sheets
+- `reports/appium/appium-results.json`
+- `reports/appium/mochawesome/`
+- `reports/appium/failures/`
+- `screenshots/appium/`
+- `logs/appium-e2e.log`

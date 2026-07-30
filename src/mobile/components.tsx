@@ -14,6 +14,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing } from './theme';
 
+function automationId(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '') || 'control';
+}
+
 export function Screen({ children, scroll = true }: { children: React.ReactNode; scroll?: boolean }) {
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, 24);
@@ -41,14 +48,15 @@ export function Screen({ children, scroll = true }: { children: React.ReactNode;
   );
 }
 
-export function Header({ title, subtitle, back, action }: {
+export function Header({ title, subtitle, back, action, testID }: {
   title: string;
   subtitle?: string;
   back?: () => void;
   action?: React.ReactNode;
+  testID?: string;
 }) {
   return (
-    <View style={styles.header}>
+    <View style={styles.header} testID={testID ?? `screen-${automationId(title)}`}>
       <View style={styles.headerRow}>
         {back ? (
           <Pressable
@@ -57,6 +65,7 @@ export function Header({ title, subtitle, back, action }: {
             hitSlop={8}
             onPress={back}
             style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+            testID="button-back"
           >
             <View pointerEvents="none" style={styles.backChevron}>
               <View style={[styles.backChevronLine, styles.backChevronTop]} />
@@ -65,7 +74,9 @@ export function Header({ title, subtitle, back, action }: {
           </Pressable>
         ) : null}
         <View style={styles.headerText}>
-          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.title} testID={`header-title-${automationId(title)}`}>
+            {title}
+          </Text>
           {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         </View>
         {action}
@@ -83,6 +94,7 @@ export function TextField({
   keyboardType,
   multiline,
   editable = true,
+  testID,
 }: {
   label: string;
   value: string;
@@ -92,11 +104,15 @@ export function TextField({
   keyboardType?: KeyboardTypeOptions;
   multiline?: boolean;
   editable?: boolean;
+  testID?: string;
 }) {
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label} testID={`label-${automationId(label)}`}>
+        {label}
+      </Text>
       <TextInput
+        accessibilityLabel={label}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -107,20 +123,24 @@ export function TextField({
         multiline={multiline}
         style={[styles.input, multiline && styles.multiline, !editable && styles.disabledInput]}
         placeholderTextColor="#a3a3a3"
+        testID={testID ?? `input-${automationId(label)}`}
       />
     </View>
   );
 }
 
-export function PrimaryButton({ title, onPress, disabled, tone = 'primary' }: {
+export function PrimaryButton({ title, onPress, disabled, tone = 'primary', testID }: {
   title: string;
   onPress: () => void;
   disabled?: boolean;
   tone?: 'primary' | 'danger' | 'neutral';
+  testID?: string;
 }) {
   const backgroundColor = tone === 'danger' ? colors.danger : tone === 'neutral' ? '#374151' : colors.primary;
   return (
     <Pressable
+      accessibilityLabel={title}
+      accessibilityRole="button"
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [
@@ -129,15 +149,22 @@ export function PrimaryButton({ title, onPress, disabled, tone = 'primary' }: {
         disabled && styles.disabledButton,
         pressed && !disabled && styles.pressedButton,
       ]}
+      testID={testID ?? `button-${automationId(title)}`}
     >
       <Text style={styles.primaryButtonText}>{title}</Text>
     </Pressable>
   );
 }
 
-export function LinkButton({ title, onPress }: { title: string; onPress: () => void }) {
+export function LinkButton({ title, onPress, testID }: { title: string; onPress: () => void; testID?: string }) {
   return (
-    <Pressable onPress={onPress} style={styles.linkButton}>
+    <Pressable
+      accessibilityLabel={title}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={styles.linkButton}
+      testID={testID ?? `button-${automationId(title)}`}
+    >
       <Text style={styles.linkText}>{title}</Text>
     </Pressable>
   );
@@ -147,19 +174,27 @@ export function Message({ text, tone = 'info' }: { text: string; tone?: 'info' |
   const backgroundColor = tone === 'error' ? '#fef2f2' : tone === 'success' ? '#ecfdf5' : '#eff6ff';
   const color = tone === 'error' ? colors.danger : tone === 'success' ? colors.success : '#1d4ed8';
   return (
-    <View style={[styles.message, { backgroundColor }]}>
+    <View style={[styles.message, { backgroundColor }]} testID={`message-${tone}`}>
       <Text style={[styles.messageText, { color }]}>{text}</Text>
     </View>
   );
 }
 
-export function CheckboxRow({ label, value, onValueChange }: {
+export function CheckboxRow({ label, value, onValueChange, testID }: {
   label: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
+  testID?: string;
 }) {
   return (
-    <Pressable onPress={() => onValueChange(!value)} style={styles.checkboxRow}>
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: value }}
+      onPress={() => onValueChange(!value)}
+      style={styles.checkboxRow}
+      testID={testID ?? `checkbox-${automationId(label)}`}
+    >
       <View style={[styles.checkbox, value && styles.checkboxChecked]}>
         {value ? <Text style={styles.checkboxMark}>✓</Text> : null}
       </View>
@@ -168,15 +203,22 @@ export function CheckboxRow({ label, value, onValueChange }: {
   );
 }
 
-export function SwitchRow({ label, value, onValueChange }: {
+export function SwitchRow({ label, value, onValueChange, testID }: {
   label: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
+  testID?: string;
 }) {
   return (
-    <View style={styles.switchRow}>
+    <View style={styles.switchRow} testID={testID ?? `switch-row-${automationId(label)}`}>
       <Text style={styles.switchLabel}>{label}</Text>
-      <Switch value={value} onValueChange={onValueChange} trackColor={{ true: colors.primary, false: '#cbd5e1' }} />
+      <Switch
+        accessibilityLabel={label}
+        testID={`switch-${automationId(label)}`}
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+      />
     </View>
   );
 }
@@ -187,12 +229,14 @@ export function SelectField({
   options,
   onSelect,
   disabled,
+  testID,
 }: {
   label: string;
   value: string;
   options: string[];
   onSelect: (value: string) => void;
   disabled?: boolean;
+  testID?: string;
 }) {
   const [open, setOpen] = useState(false);
   const sortedOptions = useMemo(() => options, [options]);
@@ -200,7 +244,14 @@ export function SelectField({
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <Pressable disabled={disabled} onPress={() => setOpen(true)} style={[styles.select, disabled && styles.disabledSelect]}>
+      <Pressable
+        accessibilityLabel={label}
+        accessibilityRole="button"
+        disabled={disabled}
+        onPress={() => setOpen(true)}
+        style={[styles.select, disabled && styles.disabledSelect]}
+        testID={testID ?? `select-${automationId(label)}`}
+      >
         <Text style={[styles.selectText, !value && styles.placeholder]}>{value || `Select ${label}`}</Text>
         <Text style={styles.chevron}>v</Text>
       </Pressable>
@@ -214,11 +265,14 @@ export function SelectField({
               style={styles.optionList}
               renderItem={({ item }) => (
                 <Pressable
+                  accessibilityLabel={item}
+                  accessibilityRole="button"
                   onPress={() => {
                     onSelect(item);
                     setOpen(false);
                   }}
                   style={styles.optionRow}
+                  testID={`option-${automationId(label)}-${automationId(item)}`}
                 >
                   <Text style={styles.optionText}>{item}</Text>
                 </Pressable>

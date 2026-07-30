@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
-const defaultApiBaseUrl = Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+const defaultApiBaseUrl = 'https://bloodlink-api.welcos.in';
 const configuredBaseUrl = cleanConfigValue(process.env.EXPO_PUBLIC_API_BASE_URL || defaultApiBaseUrl);
 const requestTimeoutMs = getRequestTimeoutMs(process.env.EXPO_PUBLIC_API_TIMEOUT_MS);
 
