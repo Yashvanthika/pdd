@@ -1,16 +1,28 @@
-name: BloodLink Appium E2E
+name: Appium Test
 
 on:
   workflow_dispatch:
     inputs:
       max_cases:
-        description: Number of Appium cases to execute from the 300+ catalog
-        default: "340"
+        description: Number of Appium cases to execute from the 384-case catalog
+        default: "384"
         required: true
       case_filter:
         description: Optional case/module/tag filter
         default: ""
         required: false
+  push:
+    paths:
+      - "App.tsx"
+      - "src/mobile/**"
+      - "tests/appium/**"
+      - "utilities/appium/**"
+      - "pages/appium/**"
+      - "data/appium/**"
+      - "config/appium.config.js"
+      - ".github/workflows/appium-e2e.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
   pull_request:
     paths:
       - "App.tsx"
@@ -35,12 +47,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api-level: [29, 35]
+        api-level: [35]
 
     env:
       APPIUM_APP_PACKAGE: com.bloodlink.app
       APPIUM_CASE_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.case_filter || '' }}
-      APPIUM_MAX_CASES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_cases || '80' }}
+      APPIUM_FULL_REPORT_MODE: "true"
+      APPIUM_MAX_CASES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_cases || '384' }}
+      APPIUM_MIN_TEST_CASES: "384"
+      APPIUM_REPORT_NAME: appium testing.xlsx
+      APPIUM_REPORT_SUFFIX: appium-testing
+      APPIUM_RETRIES: "0"
       APPIUM_SERVER_URL: http://127.0.0.1:4723
       EXPO_PUBLIC_API_BASE_URL: https://bloodlink-api.welcos.in
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
@@ -110,9 +127,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: appium-e2e-api-${{ matrix.api-level }}
+          name: appium-testing-report-api-${{ matrix.api-level }}
           path: |
-            excel/
+            excel/appium testing.xlsx
             logs/
             reports/appium/
             screenshots/appium/
+          if-no-files-found: warn

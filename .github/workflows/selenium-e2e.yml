@@ -1,0 +1,119 @@
+name: Selenium Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_cases:
+        description: Number of Selenium cases to execute; use 0 for all executable cases
+        default: "0"
+        required: true
+      case_filter:
+        description: Optional case/module/route filter
+        default: ""
+        required: false
+  push:
+    paths:
+      - "web/**"
+      - "tests/selenium/**"
+      - "utilities/**"
+      - "pages/**"
+      - "data/selenium/**"
+      - "config/selenium.config.js"
+      - ".github/workflows/selenium-e2e.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  pull_request:
+    paths:
+      - "web/**"
+      - "tests/selenium/**"
+      - "utilities/**"
+      - "pages/**"
+      - "data/selenium/**"
+      - "config/selenium.config.js"
+      - ".github/workflows/selenium-e2e.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  selenium-e2e:
+    name: Selenium Chrome
+    runs-on: ubuntu-latest
+
+    env:
+      E2E_BASE_URL: http://127.0.0.1:3001
+      E2E_BROWSERS: chrome
+      E2E_CASE_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.case_filter || '' }}
+      E2E_HEADLESS: "true"
+      E2E_MAX_CASES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_cases || '0' }}
+      E2E_MIN_TEST_CASES: "320"
+      E2E_REPORT_NAME: selenium testing.xlsx
+      E2E_REPORT_SUFFIX: selenium-testing
+      E2E_RETRIES: "0"
+      E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+      E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+      NEXT_PUBLIC_API_BASE_URL: https://bloodlink-api.welcos.in
+      NEXT_PUBLIC_API_TIMEOUT_MS: "15000"
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      TEST_ENV: github-actions
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Build web application
+        run: pnpm run web:build
+
+      - name: Start web application
+        run: |
+          pnpm run web:start > web-server.log 2>&1 &
+          for i in {1..90}; do
+            if curl --silent --fail http://127.0.0.1:3001/login > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat web-server.log
+          exit 1
+
+      - name: Run Selenium E2E
+        run: pnpm run selenium:test
+
+      - name: Generate Excel report
+        if: always()
+        run: pnpm run selenium:report
+
+      - name: Upload Selenium artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selenium-testing-report
+          path: |
+            excel/selenium testing.xlsx
+            logs/
+            reports/failures/
+            reports/mochawesome/
+            reports/selenium-results*.json
+            screenshots/
+            web-server.log
+          if-no-files-found: warn
